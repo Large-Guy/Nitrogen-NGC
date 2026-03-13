@@ -90,6 +90,20 @@ Lexer::Lexer(std::string source) {
     current_ = 0;
 }
 
+Lexer::Lexer(Lexer& lexer) noexcept {
+    source_ = lexer.source_;
+    line_ = lexer.line_;
+    start_ = lexer.start_;
+    current_ = lexer.current_;
+}
+
+Lexer::Lexer(Lexer&& lexer)  noexcept {
+    source_ = std::move(lexer.source_);
+    line_ = lexer.line_;
+    start_ = lexer.start_;
+    current_ = lexer.current_;
+}
+
 Lexer::~Lexer() = default;
 
 Token Lexer::Next() {
@@ -196,6 +210,10 @@ bool Lexer::Match(char expected) {
     return true;
 }
 
+char Lexer::View(uint32_t offset) {
+    return source_[start_ + offset];
+}
+
 char Lexer::Peek() {
     return source_[current_];
 }
@@ -288,19 +306,20 @@ Token Lexer::Number() {
 }
 
 TokenType Lexer::Keyword(uint32_t start, std::string remainder, TokenType type) {
-    if (current_ - start_ == start + remainder.size() && source_.substr(start, remainder.size()) == remainder) {
+    auto sub = source_.substr(start, remainder.size());
+    if (current_ - start_ == start + remainder.size() && source_.substr(start_ + start, remainder.size()) == remainder) {
         return type;
     }
     return TokenType::TOKEN_TYPE_IDENTIFIER;
 }
 
 TokenType Lexer::Type() {
-    switch (Peek()) {
+    switch (View()) {
         case 'r':
             {
-                if (current_ - start_ > 1 && PeekNext() == 'e' && current_ - start_ > 2)
+                if (current_ - start_ > 1 && View(1) == 'e' && current_ - start_ > 2)
                 {
-                    switch (PeekNext(2))
+                    switch (View(2))
                     {
                         case 'g': return Keyword(3, "ion", TokenType::TOKEN_TYPE_REGION);
                         case 't': return Keyword(3, "urn", TokenType::TOKEN_TYPE_RETURN);
@@ -314,7 +333,7 @@ TokenType Lexer::Type() {
             {
                 if (current_ - start_ > 1)
                 {
-                    switch (PeekNext())
+                    switch (View(1))
                     {
                         case '8': return Keyword(2, "", TokenType::TOKEN_TYPE_I8);
                         case '1': return Keyword(2, "6", TokenType::TOKEN_TYPE_I16);
@@ -325,7 +344,7 @@ TokenType Lexer::Type() {
                         case 'f': return Keyword(2, "", TokenType::TOKEN_TYPE_IF);
                         case 'n': {
                             if (current_ - start_ > 2) {
-                                switch (PeekNext()) {
+                                switch (View(1)) {
                                     case 't': return Keyword(3, "erface", TokenType::TOKEN_TYPE_INTERFACE);
                                 }
                             }
@@ -342,7 +361,7 @@ TokenType Lexer::Type() {
             {
                 if (current_ - start_ > 1)
                 {
-                    switch (PeekNext())
+                    switch (View(1))
                     {
                         case '8': return Keyword(2, "", TokenType::TOKEN_TYPE_U8);
                         case '1': return Keyword(2, "6", TokenType::TOKEN_TYPE_U16);
@@ -357,15 +376,15 @@ TokenType Lexer::Type() {
             }
         case 's':
             {
-                if (current_ - start_ > 1 && PeekNext() == 't' && current_ - start_ > 2)
+                if (current_ - start_ > 1 && View(1) == 't' && current_ - start_ > 2)
                 {
-                    switch (PeekNext(2))
+                    switch (View(2))
                     {
                         case 'r':
                             {
                                 if (current_ - start_ > 3)
                                 {
-                                    switch (PeekNext(3))
+                                    switch (View(3))
                                     {
                                         case 'i': return Keyword(4, "ng", TokenType::TOKEN_TYPE_STRING);
                                         case 'u': return Keyword(4, "ct", TokenType::TOKEN_TYPE_STRUCT);
@@ -382,9 +401,9 @@ TokenType Lexer::Type() {
             }
         case 'm':
             {
-                if (current_ - start_ > 1 && PeekNext() == 'o' && current_ - start_ > 2)
+                if (current_ - start_ > 1 && View(1) == 'o' && current_ - start_ > 2)
                 {
-                    switch (PeekNext(2))
+                    switch (View(2))
                     {
                         case 'v': return Keyword(3, "e", TokenType::TOKEN_TYPE_MOVE);
                         case 'd': return Keyword(3, "ule", TokenType::TOKEN_TYPE_MODULE);
@@ -395,9 +414,9 @@ TokenType Lexer::Type() {
             }
         case 'c':
             {
-                if (current_ - start_ > 1 && PeekNext() == 'o' && current_ - start_ > 2)
+                if (current_ - start_ > 1 && View(1) == 'o' && current_ - start_ > 2)
                 {
-                    switch (PeekNext(2))
+                    switch (View(2))
                     {
                         case 'p': return Keyword(3, "y", TokenType::TOKEN_TYPE_COPY);
                         case 'n': return Keyword(3, "st", TokenType::TOKEN_TYPE_CONST);
@@ -412,7 +431,7 @@ TokenType Lexer::Type() {
             {
                 if (current_ - start_ > 1)
                 {
-                    switch (PeekNext())
+                    switch (View(1))
                     {
                         case 'a': return Keyword(2, "lse", TokenType::TOKEN_TYPE_FALSE);
                         case 'o': return Keyword(2, "r", TokenType::TOKEN_TYPE_FOR);

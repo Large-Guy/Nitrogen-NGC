@@ -142,6 +142,8 @@ class Lexer {
 public:
 
     Lexer(std::string source);
+    Lexer(Lexer& lexer) noexcept;
+    Lexer(Lexer&& lexer) noexcept;
     ~Lexer();
 
     Token Next();
@@ -151,6 +153,7 @@ private:
     Token New(TokenType type);
     char Advance();
     bool Match(char expected);
+    char View(uint32_t offset = 0);
     char Peek();
     char PeekNext();
     char PeekNext(uint32_t offset);

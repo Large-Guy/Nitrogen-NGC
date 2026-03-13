@@ -3,6 +3,7 @@
 
 #include "ast_node.h"
 #include "lexer.h"
+#include "parser.h"
 
 int main() {
     std::string path = "main.n";
@@ -16,13 +17,13 @@ int main() {
 
     Lexer lexer = {content};
 
-    while (true) {
-        auto token = lexer.Next();
-        if (token.type == TokenType::TOKEN_TYPE_EOF)
-            break;
-        std::cout << TokenTypeToString(token.type) << " " << token.value << std::endl;
-    }
+    Parser parser = {std::move(lexer)};
+    
+    auto nodes = parser.Parse();
 
+    for (auto& node: nodes) {
+        node->Debug();
+    }
 
     return 0;
 }
