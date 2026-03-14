@@ -15,6 +15,11 @@ Parser::Parser(Lexer lexer) : lexer(std::move(lexer)) {
 class Expressions {
 public:
     static std::unique_ptr<AstNode> Number(Parser& parser, bool canAssign) {
+        auto num = parser.previous;
+        if (parser.previous.type == TokenType::TOKEN_TYPE_FLOAT) {
+            return AstNode::New(AstNodeType::FLOAT, num);
+        }
+        return AstNode::New(AstNodeType::INT, num);
     }
 
     static std::unique_ptr<AstNode> String(Parser& parser, bool canAssign) {
@@ -24,6 +29,35 @@ public:
     }
 
     static std::unique_ptr<AstNode> Unary(Parser& parser, bool canAssign) {
+        auto unary = parser.previous;
+        auto operand = parser.ParsePrecedence(Parser::Precedence::UNARY);
+        switch (unary.type) {
+            case TokenType::TOKEN_TYPE_MINUS: {
+                auto negate = AstNode::New(AstNodeType::NEGATE);
+                negate->AddNode(std::move(operand));
+                return negate;
+            }
+            case TokenType::TOKEN_TYPE_AND: {
+                auto address = AstNode::New(AstNodeType::ADDRESS);
+                address->AddNode(std::move(operand));
+                return address;
+            }
+            case TokenType::TOKEN_TYPE_STAR: {
+                auto negate = AstNode::New(AstNodeType::LOCK);
+                negate->AddNode(std::move(operand));
+                return negate;
+            }
+            case TokenType::TOKEN_TYPE_BANG: {
+                auto negate = AstNode::New(AstNodeType::NOT);
+                negate->AddNode(std::move(operand));
+                return negate;
+            }
+                
+            default: {
+                parser.Error(unary, "Unsupported unary expression type");
+                return nullptr;
+            }
+        }
     }
 
     static std::unique_ptr<AstNode> Cast(Parser& parser, bool canAssign) {
@@ -39,6 +73,7 @@ public:
     }
 
     static std::unique_ptr<AstNode> Binary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        
     }
 
     static std::unique_ptr<AstNode> Interval(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
@@ -120,6 +155,7 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
 };
 
 std::unique_ptr<AstNode> Parser::Expression() {
+    return ParsePrecedence(Precedence::ASSIGNMENT);
 }
 
 std::unique_ptr<AstNode> Parser::ReturnStatement() {
@@ -129,6 +165,7 @@ std::unique_ptr<AstNode> Parser::ReturnStatement() {
     }
     auto what = Expression();
     ret->AddNode(std::move(what));
+    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
     return ret;
 }
 
@@ -276,6 +313,9 @@ std::unique_ptr<AstNode> Parser::Block() {
 std::unique_ptr<AstNode> Parser::DeclarationStatement() {
     auto definition = Declaration();
     if (definition->type == AstNodeType::VARIABLE) {
+        if (Match(TokenType::TOKEN_TYPE_EQUAL)) {
+            definition->AddNode(std::move(Expression()));
+        }
         Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected ';'");
     } else if (definition->type == AstNodeType::FUNCTION) {
         definition->AddNode(Statement());
@@ -289,6 +329,36 @@ std::vector<std::unique_ptr<AstNode> > Parser::Parse() {
         nodes.push_back(Statement());
     }
     return nodes;
+}
+
+Parser::ParseRule Parser::Rule(const TokenType& type) {
+    if (Rules.find(type) != Rules.end()) {
+        return Rules[type];
+    }
+    return {};
+}
+
+std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
+    Advance();
+    auto prefix = Rule(previous.type).prefix;
+    if (prefix == nullptr) {
+        Error(previous, "Expected type");
+        return nullptr;
+    }
+    
+    bool can_assign = precedence <= Precedence::ASSIGNMENT;
+    auto result = prefix(*this, can_assign);
+    
+    while (precedence <= Rule(current.type).precedence) {
+        Advance();
+        auto infix = Rule(current.type).infix;
+        if (infix == nullptr) {
+            Error(previous, "Expected type");
+        }
+        result = infix(*this, std::move(result), can_assign);
+    }
+    
+    return result;
 }
 
 void Parser::Error(const Token& token, const std::string& message) {

@@ -33,6 +33,15 @@ const char* AstNodeTypeToString(AstNodeType e) {
         case AstNodeType::FUNCTION: return "FUNCTION";
         case AstNodeType::VARIABLE: return "VARIABLE";
         case AstNodeType::RETURN: return "RETURN";
+        case AstNodeType::FLOAT: return "FLOAT";
+        case AstNodeType::INT: return "INT";
+            
+        case AstNodeType::NEGATE: return "NEGATE";
+        case AstNodeType::ADD: return "ADD";
+        case AstNodeType::SUBTRACT: return "SUBTRACT";
+        case AstNodeType::MULTIPLY: return "MULTIPLY";
+        case AstNodeType::DIVIDE: return "DIVIDE";
+            
         default: return "unknown";
     }
 }

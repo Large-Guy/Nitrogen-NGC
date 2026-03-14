@@ -34,18 +34,33 @@ enum class AstNodeType {
 
     TYPE_COUNT, // used for implicit cast table
 
-    INFER, // for let statements
-
     SEQUENCE, // essentially equivalent to a compound statement
 
     NAME,
 
     MODULE,
-    GET,
     
+    // declarations
     FUNCTION,
     VARIABLE,
+    
+    // statements
     RETURN,
+    INFER, // for infer statements
+    
+    FLOAT,
+    INT,
+    
+    // expressions
+    GET,
+    NEGATE,
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    ADDRESS,
+    NOT,
+    LOCK,
 };
 
 const char* AstNodeTypeToString(AstNodeType e);

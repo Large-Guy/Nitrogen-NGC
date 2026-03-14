@@ -41,6 +41,10 @@ public:
 
     std::vector<std::unique_ptr<AstNode> > Parse();
 
+    ParseRule Rule(const TokenType& type);
+
+    std::unique_ptr<AstNode> ParsePrecedence(Precedence precedence);
+
     std::unique_ptr<AstNode> Expression();
 
     std::unique_ptr<AstNode> ReturnStatement();

@@ -4,6 +4,7 @@ i32 global;
 
 i32 main()
 {
-    i32 var;
-    return;
+    i32 var = 32;
+    f32 fvar = -64.5f;
+    return 1;
 }
