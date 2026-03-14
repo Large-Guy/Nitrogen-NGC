@@ -61,6 +61,8 @@ enum class AstNodeType {
     ADDRESS,
     NOT,
     LOCK,
+    
+    ASSIGN,
 };
 
 const char* AstNodeTypeToString(AstNodeType e);

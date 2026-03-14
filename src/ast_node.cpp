@@ -42,6 +42,12 @@ const char* AstNodeTypeToString(AstNodeType e) {
         case AstNodeType::MULTIPLY: return "MULTIPLY";
         case AstNodeType::DIVIDE: return "DIVIDE";
             
+        case AstNodeType::NOT: return "NOT";
+        case AstNodeType::ADDRESS: return "ADDRESS";
+        case AstNodeType::LOCK: return "LOCK";
+            
+        case AstNodeType::ASSIGN: return "ASSIGN";
+            
         default: return "unknown";
     }
 }

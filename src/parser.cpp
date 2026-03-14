@@ -14,6 +14,23 @@ Parser::Parser(Lexer lexer) : lexer(std::move(lexer)) {
 
 class Expressions {
 public:
+    // Special expression statement
+    static std::unique_ptr<AstNode> AppendAssign(Parser& parser, std::unique_ptr<AstNode> target) {
+        auto assignment = parser.current;
+        parser.Advance();
+        switch (assignment.type) {
+            case TokenType::TOKEN_TYPE_EQUAL: {
+                auto assign = AstNode::New(AstNodeType::ASSIGN);
+                assign->AddNode(std::move(target));
+                assign->AddNode(std::move(parser.Expression()));
+                return assign;
+            }
+            default: {
+                return target;
+            }
+        }
+    }
+    
     static std::unique_ptr<AstNode> Number(Parser& parser, bool canAssign) {
         auto num = parser.previous;
         if (parser.previous.type == TokenType::TOKEN_TYPE_FLOAT) {
@@ -67,6 +84,13 @@ public:
     }
 
     static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {
+        auto variable = parser.previous;
+        auto variable_name = AstNode::New(AstNodeType::NAME, variable);
+        if (canAssign) {
+            //TODO: assign
+            return AppendAssign(parser, std::move(variable_name));
+        }
+        return variable_name;
     }
 
     static std::unique_ptr<AstNode> Literal(Parser& parser, bool canAssign) {
@@ -169,6 +193,12 @@ std::unique_ptr<AstNode> Parser::ReturnStatement() {
     return ret;
 }
 
+std::unique_ptr<AstNode> Parser::ExpressionStatement() {
+    auto expression = Expression();
+    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
+    return expression;
+}
+
 std::unique_ptr<AstNode> Parser::Statement() {
     if (Match(TokenType::TOKEN_TYPE_MODULE)) {
         return ModuleStatement();
@@ -182,8 +212,7 @@ std::unique_ptr<AstNode> Parser::Statement() {
     if (Match(TokenType::TOKEN_TYPE_RETURN)) {
         return ReturnStatement();
     }
-    Error(current, "Unsupported instruction");
-    return nullptr;
+    return ExpressionStatement();
 }
 
 std::unique_ptr<AstNode> Parser::ModuleStatement() {
@@ -423,9 +452,6 @@ bool Parser::CheckType() const {
         return true;
     }
     if (Check(TokenType::TOKEN_TYPE_STRING)) {
-        return true;
-    }
-    if (Check(TokenType::TOKEN_TYPE_IDENTIFIER)) {
         return true;
     }
     return false;

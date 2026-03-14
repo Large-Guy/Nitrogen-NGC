@@ -49,6 +49,8 @@ public:
 
     std::unique_ptr<AstNode> ReturnStatement();
 
+    std::unique_ptr<AstNode> ExpressionStatement();
+
     std::unique_ptr<AstNode> Statement();
 
     std::unique_ptr<AstNode> ModuleStatement();
