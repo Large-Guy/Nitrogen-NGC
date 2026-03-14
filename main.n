@@ -1,8 +1,6 @@
 module program;
 
-i32 main()
+f32<3> main()
 {
-    f32 fvar = -64.5f;
-    
-    fvar = 64.5f;
+    return (10f, 3f, 200f);
 }

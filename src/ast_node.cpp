@@ -5,7 +5,7 @@
 
 const char* AstNodeTypeToString(AstNodeType e) {
     switch (e) {
-        case AstNodeType::NULL_: return "NULL";
+        case AstNodeType::_NULL: return "NULL";
         case AstNodeType::VOID: return "VOID";
         case AstNodeType::BORROW: return "BORROW";
         case AstNodeType::OWNER: return "OWNER";
@@ -35,18 +35,41 @@ const char* AstNodeTypeToString(AstNodeType e) {
         case AstNodeType::RETURN: return "RETURN";
         case AstNodeType::FLOAT: return "FLOAT";
         case AstNodeType::INT: return "INT";
+        case AstNodeType::TRUE: return "TRUE";
+        case AstNodeType::FALSE: return "FALSE";
             
         case AstNodeType::NEGATE: return "NEGATE";
         case AstNodeType::ADD: return "ADD";
         case AstNodeType::SUBTRACT: return "SUBTRACT";
         case AstNodeType::MULTIPLY: return "MULTIPLY";
         case AstNodeType::DIVIDE: return "DIVIDE";
-            
+
+        case AstNodeType::EXPONENT: return "EXPONENT";
+        case AstNodeType::BITWISE_AND: return "AND";
+        case AstNodeType::BITWISE_OR: return "OR";
+        case AstNodeType::BITWISE_XOR: return "XOR";
+        case AstNodeType::MODULO: return "MODULO";
+        case AstNodeType::SHIFT_LEFT: return "SHIFT_LEFT";
+        case AstNodeType::SHIFT_RIGHT: return "SHIFT_RIGHT";
+        case AstNodeType::GREATER: return "GREATER";
+        case AstNodeType::GREATER_EQUAL: return "GREATER_EQUAL";
+        case AstNodeType::LESS: return "LESS";
+        case AstNodeType::LESS_EQUAL: return "LESS_EQUAL";
+        case AstNodeType::EQUAL: return "EQUAL";
+        case AstNodeType::NOT_EQUAL: return "NOT_EQUAL";
+
+        case AstNodeType::AND: return "AND";
+        case AstNodeType::OR: return "OR";
+
         case AstNodeType::NOT: return "NOT";
         case AstNodeType::ADDRESS: return "ADDRESS";
         case AstNodeType::LOCK: return "LOCK";
             
         case AstNodeType::ASSIGN: return "ASSIGN";
+        case AstNodeType::CAST: return "CAST";
+        case AstNodeType::HEAP: return "HEAP";
+
+        case AstNodeType::LIST: return "LIST";
             
         default: return "unknown";
     }

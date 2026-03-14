@@ -9,7 +9,7 @@
 
 enum class AstNodeType {
     //types
-    NULL_,
+    _NULL,
     VOID,
     BORROW,
     OWNER,
@@ -51,7 +51,9 @@ enum class AstNodeType {
     
     FLOAT,
     INT,
-    
+    TRUE,
+    FALSE,
+
     // expressions
     GET,
     NEGATE,
@@ -59,6 +61,23 @@ enum class AstNodeType {
     SUBTRACT,
     MULTIPLY,
     DIVIDE,
+    EXPONENT,
+    BITWISE_AND,
+    BITWISE_OR,
+    BITWISE_XOR,
+    MODULO,
+    SHIFT_LEFT,
+    SHIFT_RIGHT,
+    GREATER,
+    GREATER_EQUAL,
+    LESS,
+    LESS_EQUAL,
+    EQUAL,
+    NOT_EQUAL,
+
+    AND,
+    OR,
+
     ADDRESS,
     NOT,
     LOCK,
@@ -67,6 +86,7 @@ enum class AstNodeType {
     CAST,
     HEAP,
 
+    LIST,
 };
 
 const char* AstNodeTypeToString(AstNodeType e);

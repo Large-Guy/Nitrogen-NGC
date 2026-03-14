@@ -43,6 +43,21 @@ public:
     }
 
     static std::unique_ptr<AstNode> Group(Parser& parser, bool canAssign) {
+        auto node = parser.Expression();
+        if (parser.Match(TokenType::TOKEN_TYPE_COMMA)) {
+            auto list = AstNode::New(AstNodeType::LIST);
+            list->AddNode(std::move(node));
+            do {
+                auto next = parser.Expression();
+                list->AddNode(std::move(next));
+            } while (parser.Match(TokenType::TOKEN_TYPE_COMMA));
+
+            node = std::move(list);
+        }
+
+        parser.Consume(TokenType::TOKEN_TYPE_RIGHT_PAREN, "Expected closing ')'");
+
+        return node;
     }
 
     static std::unique_ptr<AstNode> Unary(Parser& parser, bool canAssign) {
@@ -94,22 +109,115 @@ public:
     }
 
     static std::unique_ptr<AstNode> Literal(Parser& parser, bool canAssign) {
+        auto token = parser.previous_;
+        switch (token.type) {
+            case TokenType::TOKEN_TYPE_NULL:
+                return AstNode::New(AstNodeType::_NULL);
+            case TokenType::TOKEN_TYPE_TRUE:
+                return AstNode::New(AstNodeType::TRUE);
+            case TokenType::TOKEN_TYPE_FALSE:
+                return AstNode::New(AstNodeType::FALSE);
+            default: {
+                parser.Error(token, "Unsupported literal type");
+                return nullptr;
+            }
+        }
     }
 
     static std::unique_ptr<AstNode> Binary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        
+        auto op = parser.previous_;
+
+        auto rule = parser.Rule(op.type);
+
+        auto right = parser.ParsePrecedence(static_cast<Parser::Precedence>(static_cast<int>(rule.precedence) + 1));
+
+        std::unique_ptr<AstNode> node = nullptr;
+
+        switch (op.type) {
+            case TokenType::TOKEN_TYPE_PLUS: {
+                node = AstNode::New(AstNodeType::ADD);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_MINUS: {
+                node = AstNode::New(AstNodeType::SUBTRACT);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_STAR: {
+                node = AstNode::New(AstNodeType::MULTIPLY);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_SLASH: {
+                node = AstNode::New(AstNodeType::DIVIDE);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_STAR_STAR: {
+                node = AstNode::New(AstNodeType::EXPONENT);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_PERCENT: {
+                node = AstNode::New(AstNodeType::MODULO);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_PIPE: {
+                node = AstNode::New(AstNodeType::BITWISE_OR);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_CARET: {
+                node = AstNode::New(AstNodeType::BITWISE_XOR);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_AND: {
+                node = AstNode::New(AstNodeType::BITWISE_AND);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_GREATER: {
+                node = AstNode::New(AstNodeType::GREATER);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_GREATER_EQUAL: {
+                node = AstNode::New(AstNodeType::GREATER_EQUAL);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_LESS: {
+                node = AstNode::New(AstNodeType::LESS);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_LESS_EQUAL: {
+                node = AstNode::New(AstNodeType::LESS_EQUAL);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_GREATER_GREATER: {
+                node = AstNode::New(AstNodeType::SHIFT_RIGHT);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_LESS_LESS: {
+                node = AstNode::New(AstNodeType::SHIFT_LEFT);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_AND_AND: {
+                node = AstNode::New(AstNodeType::AND);
+                break;
+            }
+            case TokenType::TOKEN_TYPE_PIPE_PIPE: {
+                node = AstNode::New(AstNodeType::OR);
+                break;
+            }
+            default: {
+                parser.Error(op, "Unsupported binary expression type");
+                return nullptr;
+            }
+        }
+
+        node->AddNode(std::move(left));
+        node->AddNode(std::move(right));
+
+        return node;
     }
 
     static std::unique_ptr<AstNode> Interval(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
     }
 
     static std::unique_ptr<AstNode> Include(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-    }
-
-    static std::unique_ptr<AstNode> And(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-    }
-
-    static std::unique_ptr<AstNode> Or(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
     }
 
     static std::unique_ptr<AstNode> Call(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
@@ -146,9 +254,9 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     rules[TokenType::TOKEN_TYPE_LESS_LESS] = {nullptr, Expressions::Binary, Precedence::SHIFT};
     rules[TokenType::TOKEN_TYPE_LESS_EQUAL] = {nullptr, Expressions::Binary, Precedence::COMPARISON};
     rules[TokenType::TOKEN_TYPE_AND] = {Expressions::Unary, Expressions::Binary, Precedence::BITWISE_AND};
-    rules[TokenType::TOKEN_TYPE_AND_AND] = {nullptr, Expressions::And, Precedence::AND};
+    rules[TokenType::TOKEN_TYPE_AND_AND] = {nullptr, Expressions::Binary, Precedence::AND};
     rules[TokenType::TOKEN_TYPE_PIPE] = {nullptr, Expressions::Binary, Precedence::BITWISE_OR};
-    rules[TokenType::TOKEN_TYPE_PIPE_PIPE] = {nullptr, Expressions::Or, Precedence::OR};
+    rules[TokenType::TOKEN_TYPE_PIPE_PIPE] = {nullptr, Expressions::Binary, Precedence::OR};
     rules[TokenType::TOKEN_TYPE_PERCENT] = {nullptr, Expressions::Binary, Precedence::MODULO};
     rules[TokenType::TOKEN_TYPE_CARET] = {nullptr, Expressions::Binary, Precedence::BITWISE_XOR};
     rules[TokenType::TOKEN_TYPE_TILDE] = {Expressions::Unary, nullptr, Precedence::UNARY};
@@ -206,7 +314,7 @@ std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
 
     while (precedence <= Rule(current_.type).precedence) {
         Advance();
-        auto infix = Rule(current_.type).infix;
+        auto infix = Rule(previous_.type).infix;
         if (infix == nullptr) {
             Error(previous_, "Expected type");
         }
@@ -216,8 +324,8 @@ std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
     return result;
 }
 
-std::unique_ptr<AstNode> Parser::Expression() {
-    return ParsePrecedence(Precedence::ASSIGNMENT);
+std::unique_ptr<AstNode> Parser::Expression(Precedence start) {
+    return ParsePrecedence(start);
 }
 
 std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
@@ -252,9 +360,9 @@ std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
 }
 
 std::unique_ptr<AstNode> Parser::BuildType(std::unique_ptr<AstNode> base) {
-    if (Match(TokenType::TOKEN_TYPE_GREATER)) {
-        auto size = Expression();
-        Consume(TokenType::TOKEN_TYPE_LESS, "Expected closing '>'");
+    if (Match(TokenType::TOKEN_TYPE_LESS)) {
+        auto size = Expression(Precedence::SHIFT);
+        Consume(TokenType::TOKEN_TYPE_GREATER, "Expected closing '>'");
         auto simd = AstNode::New(AstNodeType::SIMD);
         simd->AddNode(std::move(base));
         simd->AddNode(std::move(size));

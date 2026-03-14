@@ -49,7 +49,7 @@ private:
 
     std::unique_ptr<AstNode> ParsePrecedence(Precedence precedence);
 
-    std::unique_ptr<AstNode> Expression();
+    std::unique_ptr<AstNode> Expression(Precedence start = Precedence::ASSIGNMENT);
 
     std::unique_ptr<AstNode> NodeFromType(const Token& token);
 
