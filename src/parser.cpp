@@ -4,19 +4,19 @@
 #include <iostream>
 #include <unordered_set>
 
-std::unordered_map<TokenType, Parser::ParseRule> Parser::Rules = {};
-
-Parser::Parser(Lexer lexer) : lexer(std::move(lexer)) {
-    if (Rules.empty())
-        Rules = BuildRules();
+Parser::Parser(Lexer lexer) : lexer_(std::move(lexer)) {
+    if (rules_.empty())
+        rules_ = BuildRules();
     Advance();
 }
+
+std::unordered_map<TokenType, Parser::ParseRule> Parser::rules_ = {};
 
 class Expressions {
 public:
     // Special expression statement
     static std::unique_ptr<AstNode> AppendAssign(Parser& parser, std::unique_ptr<AstNode> target) {
-        auto assignment = parser.current;
+        auto assignment = parser.current_;
         parser.Advance();
         switch (assignment.type) {
             case TokenType::TOKEN_TYPE_EQUAL: {
@@ -32,8 +32,8 @@ public:
     }
     
     static std::unique_ptr<AstNode> Number(Parser& parser, bool canAssign) {
-        auto num = parser.previous;
-        if (parser.previous.type == TokenType::TOKEN_TYPE_FLOAT) {
+        auto num = parser.previous_;
+        if (parser.previous_.type == TokenType::TOKEN_TYPE_FLOAT) {
             return AstNode::New(AstNodeType::FLOAT, num);
         }
         return AstNode::New(AstNodeType::INT, num);
@@ -46,7 +46,7 @@ public:
     }
 
     static std::unique_ptr<AstNode> Unary(Parser& parser, bool canAssign) {
-        auto unary = parser.previous;
+        auto unary = parser.previous_;
         auto operand = parser.ParsePrecedence(Parser::Precedence::UNARY);
         switch (unary.type) {
             case TokenType::TOKEN_TYPE_MINUS: {
@@ -84,7 +84,7 @@ public:
     }
 
     static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {
-        auto variable = parser.previous;
+        auto variable = parser.previous_;
         auto variable_name = AstNode::New(AstNodeType::NAME, variable);
         if (canAssign) {
             //TODO: assign
@@ -178,64 +178,77 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     return rules;
 };
 
+std::vector<std::unique_ptr<AstNode> > Parser::Parse() {
+    std::vector<std::unique_ptr<AstNode> > nodes = {};
+    while (!Match(TokenType::TOKEN_TYPE_EOF)) {
+        nodes.push_back(Statement());
+    }
+    return nodes;
+}
+
+Parser::ParseRule Parser::Rule(const TokenType& type) {
+    if (rules_.find(type) != rules_.end()) {
+        return rules_[type];
+    }
+    return {};
+}
+
+std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
+    Advance();
+    auto prefix = Rule(previous_.type).prefix;
+    if (prefix == nullptr) {
+        Error(previous_, "Expected type");
+        return nullptr;
+    }
+
+    bool can_assign = precedence <= Precedence::ASSIGNMENT;
+    auto result = prefix(*this, can_assign);
+
+    while (precedence <= Rule(current_.type).precedence) {
+        Advance();
+        auto infix = Rule(current_.type).infix;
+        if (infix == nullptr) {
+            Error(previous_, "Expected type");
+        }
+        result = infix(*this, std::move(result), can_assign);
+    }
+
+    return result;
+}
+
 std::unique_ptr<AstNode> Parser::Expression() {
     return ParsePrecedence(Precedence::ASSIGNMENT);
 }
 
-std::unique_ptr<AstNode> Parser::ReturnStatement() {
-    auto ret = AstNode::New(AstNodeType::RETURN);
-    if (Match(TokenType::TOKEN_TYPE_SEMICOLON)) {
-        return ret;
-    }
-    auto what = Expression();
-    ret->AddNode(std::move(what));
-    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
-    return ret;
-}
-
-std::unique_ptr<AstNode> Parser::ExpressionStatement() {
-    auto expression = Expression();
-    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
-    return expression;
-}
-
-std::unique_ptr<AstNode> Parser::Statement() {
-    if (Match(TokenType::TOKEN_TYPE_MODULE)) {
-        return ModuleStatement();
-    }
-    if (MatchType()) {
-        return DeclarationStatement();
-    }
-    if (Match(TokenType::TOKEN_TYPE_LEFT_BRACE)) {
-        return Block();
-    }
-    if (Match(TokenType::TOKEN_TYPE_RETURN)) {
-        return ReturnStatement();
-    }
-    return ExpressionStatement();
-}
-
-std::unique_ptr<AstNode> Parser::ModuleStatement() {
-    auto node = AstNode::New(AstNodeType::MODULE);
-    std::unique_ptr<AstNode> name = nullptr;
-    do {
-        Consume(TokenType::TOKEN_TYPE_IDENTIFIER, "Expected identifier");
-        if (!name) {
-            name = AstNode::New(AstNodeType::NAME, previous);
-        } else {
-            auto get = AstNode::New(AstNodeType::GET);
-            get->AddNode(std::move(name));
-            get->AddNode(AstNode::New(AstNodeType::NAME, previous));
-            name = std::move(get);
+std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
+    switch (token.type) {
+        case TokenType::TOKEN_TYPE_I8:
+            return AstNode::New(AstNodeType::I8);
+        case TokenType::TOKEN_TYPE_I16:
+            return AstNode::New(AstNodeType::I16);
+        case TokenType::TOKEN_TYPE_I32:
+            return AstNode::New(AstNodeType::I32);
+        case TokenType::TOKEN_TYPE_I64:
+            return AstNode::New(AstNodeType::I64);
+        case TokenType::TOKEN_TYPE_U8:
+            return AstNode::New(AstNodeType::U8);
+        case TokenType::TOKEN_TYPE_U16:
+            return AstNode::New(AstNodeType::U16);
+        case TokenType::TOKEN_TYPE_U32:
+            return AstNode::New(AstNodeType::U32);
+        case TokenType::TOKEN_TYPE_U64:
+            return AstNode::New(AstNodeType::U64);
+        case TokenType::TOKEN_TYPE_F32:
+            return AstNode::New(AstNodeType::F32);
+        case TokenType::TOKEN_TYPE_F64:
+            return AstNode::New(AstNodeType::F64);
+        case TokenType::TOKEN_TYPE_BOOL:
+            return AstNode::New(AstNodeType::BOOL);
+        default: {
+            Error(token, "Unsupported type");
+            return nullptr;
         }
     }
-    while (Match(TokenType::TOKEN_TYPE_DOT));
-
-    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon after statement");
-
-    node->AddNode(std::move(name));
-
-    return node;
 }
 
 std::unique_ptr<AstNode> Parser::BuildType(std::unique_ptr<AstNode> base) {
@@ -271,44 +284,69 @@ std::unique_ptr<AstNode> Parser::BuildType(std::unique_ptr<AstNode> base) {
     return base;
 }
 
-std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
-    switch (token.type) {
-        case TokenType::TOKEN_TYPE_I8:
-            return AstNode::New(AstNodeType::I8);
-        case TokenType::TOKEN_TYPE_I16:
-            return AstNode::New(AstNodeType::I16);
-        case TokenType::TOKEN_TYPE_I32:
-            return AstNode::New(AstNodeType::I32);
-        case TokenType::TOKEN_TYPE_I64:
-            return AstNode::New(AstNodeType::I64);
-        case TokenType::TOKEN_TYPE_U8:
-            return AstNode::New(AstNodeType::U8);
-        case TokenType::TOKEN_TYPE_U16:
-            return AstNode::New(AstNodeType::U16);
-        case TokenType::TOKEN_TYPE_U32:
-            return AstNode::New(AstNodeType::U32);
-        case TokenType::TOKEN_TYPE_U64:
-            return AstNode::New(AstNodeType::U64);
-        case TokenType::TOKEN_TYPE_F32:
-            return AstNode::New(AstNodeType::F32);
-        case TokenType::TOKEN_TYPE_F64:
-            return AstNode::New(AstNodeType::F64);
-        case TokenType::TOKEN_TYPE_BOOL:
-            return AstNode::New(AstNodeType::BOOL);
-        default: {
-            Error(token, "Unsupported type");
-            return nullptr;
+std::unique_ptr<AstNode> Parser::Statement() {
+    if (Match(TokenType::TOKEN_TYPE_MODULE)) {
+        return ModuleStatement();
+    }
+    if (MatchType()) {
+        return DeclarationStatement();
+    }
+    if (Match(TokenType::TOKEN_TYPE_LEFT_BRACE)) {
+        return Block();
+    }
+    if (Match(TokenType::TOKEN_TYPE_RETURN)) {
+        return ReturnStatement();
+    }
+    return ExpressionStatement();
+}
+
+std::unique_ptr<AstNode> Parser::ReturnStatement() {
+    auto ret = AstNode::New(AstNodeType::RETURN);
+    if (Match(TokenType::TOKEN_TYPE_SEMICOLON)) {
+        return ret;
+    }
+    auto what = Expression();
+    ret->AddNode(std::move(what));
+    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
+    return ret;
+}
+
+std::unique_ptr<AstNode> Parser::ExpressionStatement() {
+    auto expression = Expression();
+    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon");
+    return expression;
+}
+
+std::unique_ptr<AstNode> Parser::ModuleStatement() {
+    auto node = AstNode::New(AstNodeType::MODULE);
+    std::unique_ptr<AstNode> name = nullptr;
+    do {
+        Consume(TokenType::TOKEN_TYPE_IDENTIFIER, "Expected identifier");
+        if (!name) {
+            name = AstNode::New(AstNodeType::NAME, previous_);
+        } else {
+            auto get = AstNode::New(AstNodeType::GET);
+            get->AddNode(std::move(name));
+            get->AddNode(AstNode::New(AstNodeType::NAME, previous_));
+            name = std::move(get);
         }
     }
+    while (Match(TokenType::TOKEN_TYPE_DOT));
+
+    Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon after statement");
+
+    node->AddNode(std::move(name));
+
+    return node;
 }
 
 std::unique_ptr<AstNode> Parser::Declaration() {
-    auto type_token = previous;
+    auto type_token = previous_;
     auto base_node = NodeFromType(type_token);
     auto type_node = BuildType(std::move(base_node));
 
     Consume(TokenType::TOKEN_TYPE_IDENTIFIER, "Expected name after definition");
-    auto name = AstNode::New(AstNodeType::NAME, previous);
+    auto name = AstNode::New(AstNodeType::NAME, previous_);
 
     if (Match(TokenType::TOKEN_TYPE_LEFT_PAREN)) {
         auto function = AstNode::New(AstNodeType::FUNCTION);
@@ -352,69 +390,31 @@ std::unique_ptr<AstNode> Parser::DeclarationStatement() {
     return definition;
 }
 
-std::vector<std::unique_ptr<AstNode> > Parser::Parse() {
-    std::vector<std::unique_ptr<AstNode> > nodes = {};
-    while (!Match(TokenType::TOKEN_TYPE_EOF)) {
-        nodes.push_back(Statement());
-    }
-    return nodes;
-}
-
-Parser::ParseRule Parser::Rule(const TokenType& type) {
-    if (Rules.find(type) != Rules.end()) {
-        return Rules[type];
-    }
-    return {};
-}
-
-std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
-    Advance();
-    auto prefix = Rule(previous.type).prefix;
-    if (prefix == nullptr) {
-        Error(previous, "Expected type");
-        return nullptr;
-    }
-    
-    bool can_assign = precedence <= Precedence::ASSIGNMENT;
-    auto result = prefix(*this, can_assign);
-    
-    while (precedence <= Rule(current.type).precedence) {
-        Advance();
-        auto infix = Rule(current.type).infix;
-        if (infix == nullptr) {
-            Error(previous, "Expected type");
-        }
-        result = infix(*this, std::move(result), can_assign);
-    }
-    
-    return result;
-}
-
 void Parser::Error(const Token& token, const std::string& message) {
     std::cerr << message << " at line: " << token.line << " at: " << token.value << std::endl;
     throw std::exception();
 }
 
 Token Parser::Advance() {
-    previous = current;
+    previous_ = current_;
     while (true) {
-        current = lexer.Next();
-        if (current.type != TokenType::TOKEN_TYPE_ERROR)
+        current_ = lexer_.Next();
+        if (current_.type != TokenType::TOKEN_TYPE_ERROR)
             break;
 
-        Error(current, "Unexpected error");
+        Error(current_, "Unexpected error");
         break;
     }
-    std::cout << TokenTypeToString(current.type) << std::endl;
-    return current;
+    std::cout << TokenTypeToString(current_.type) << std::endl;
+    return current_;
 }
 
 Token Parser::Peek() {
-    return current;
+    return current_;
 }
 
 bool Parser::Check(TokenType type) const {
-    return current.type == type;
+    return current_.type == type;
 }
 
 bool Parser::CheckType() const {
@@ -457,16 +457,16 @@ bool Parser::CheckType() const {
     return false;
 }
 
-bool Parser::MatchType() {
-    if (CheckType()) {
+bool Parser::Match(TokenType type) {
+    if (Check(type)) {
         Advance();
         return true;
     }
     return false;
 }
 
-bool Parser::Match(TokenType type) {
-    if (Check(type)) {
+bool Parser::MatchType() {
+    if (CheckType()) {
         Advance();
         return true;
     }
@@ -478,5 +478,5 @@ void Parser::Consume(TokenType type, const std::string& error) {
         Advance();
         return;
     }
-    Error(current, error);
+    Error(current_, error);
 }

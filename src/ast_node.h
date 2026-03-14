@@ -2,6 +2,7 @@
 #define NCC_AST_NODE_H
 #include <memory>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include "lexer.h"
@@ -63,6 +64,9 @@ enum class AstNodeType {
     LOCK,
     
     ASSIGN,
+    CAST,
+    HEAP,
+
 };
 
 const char* AstNodeTypeToString(AstNodeType e);
@@ -86,6 +90,7 @@ public:
 
     AstNodeType type;
     std::optional<Token> token;
+    std::variant<bool, uint64_t, double, std::string> value;
 private:
     AstNode(AstNodeType type, std::optional<Token> token);
 

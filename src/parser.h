@@ -10,6 +10,10 @@ class Parser {
 public:
     Parser(Lexer lexer);
 
+    std::vector<std::unique_ptr<AstNode> > Parse();
+
+private:
+
     enum class Precedence {
         NONE,
         ASSIGNMENT,
@@ -37,9 +41,9 @@ public:
         Precedence precedence;
     };
 
-    std::unordered_map<TokenType, Parser::ParseRule> BuildRules();
+    // Expressions
 
-    std::vector<std::unique_ptr<AstNode> > Parse();
+    std::unordered_map<TokenType, Parser::ParseRule> BuildRules();
 
     ParseRule Rule(const TokenType& type);
 
@@ -47,17 +51,19 @@ public:
 
     std::unique_ptr<AstNode> Expression();
 
+    std::unique_ptr<AstNode> NodeFromType(const Token& token);
+
+    std::unique_ptr<AstNode> BuildType(std::unique_ptr<AstNode> base);
+
+    // Statements
+
+    std::unique_ptr<AstNode> Statement();
+
     std::unique_ptr<AstNode> ReturnStatement();
 
     std::unique_ptr<AstNode> ExpressionStatement();
 
-    std::unique_ptr<AstNode> Statement();
-
     std::unique_ptr<AstNode> ModuleStatement();
-
-    std::unique_ptr<AstNode> BuildType(std::unique_ptr<AstNode> base);
-
-    std::unique_ptr<AstNode> NodeFromType(const Token& token);
 
     std::unique_ptr<AstNode> Declaration();
 
@@ -75,20 +81,19 @@ public:
 
     [[nodiscard]] bool CheckType() const;
 
-    bool MatchType();
-
     bool Match(TokenType type);
+
+    bool MatchType();
 
     void Consume(TokenType type, const std::string& error);
 
-    Lexer lexer;
+    Lexer lexer_;
 
-    Token current;
-    Token previous;
-private:
-    
-    static std::unordered_map<TokenType, Parser::ParseRule> Rules;
-    
+    Token current_;
+    Token previous_;
+
+    static std::unordered_map<TokenType, Parser::ParseRule> rules_;
+
     friend class Expressions;
 };
 
