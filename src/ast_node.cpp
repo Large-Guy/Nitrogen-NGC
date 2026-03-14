@@ -32,6 +32,7 @@ const char* AstNodeTypeToString(AstNodeType e) {
         case AstNodeType::GET: return "GET";
         case AstNodeType::FUNCTION: return "FUNCTION";
         case AstNodeType::VARIABLE: return "VARIABLE";
+        case AstNodeType::RETURN: return "RETURN";
         default: return "unknown";
     }
 }

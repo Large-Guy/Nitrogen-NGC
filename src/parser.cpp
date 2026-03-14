@@ -4,121 +4,132 @@
 #include <iostream>
 #include <unordered_set>
 
+std::unordered_map<TokenType, Parser::ParseRule> Parser::Rules = {};
+
 Parser::Parser(Lexer lexer) : lexer(std::move(lexer)) {
+    if (Rules.empty())
+        Rules = BuildRules();
     Advance();
 }
 
-std::unique_ptr<AstNode> Parser::Number(bool canAssign) {
-}
+class Expressions {
+public:
+    static std::unique_ptr<AstNode> Number(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::String(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> String(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Group(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Group(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Unary(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Unary(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Cast(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Cast(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Heap(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Heap(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Variable(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Literal(bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Literal(Parser& parser, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Binary(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Binary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Interval(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Interval(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Include(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Include(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::And(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> And(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Or(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Or(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Call(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Call(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Index(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Index(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Field(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Field(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
 
-std::unique_ptr<AstNode> Parser::Ternary(std::unique_ptr<AstNode> left, bool canAssign) {
-}
+    static std::unique_ptr<AstNode> Ternary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    }
+};
 
 std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     std::unordered_map<TokenType, ParseRule> rules{};
-    rules[TokenType::TOKEN_TYPE_LEFT_PAREN] = {
-        [this](bool canAssign) { return Group(canAssign); },
-        [this](std::unique_ptr<AstNode> left, bool canAssign) { return Call(std::move(left), canAssign); },
-        Precedence::CALL
-    };
-    rules[TokenType::TOKEN_TYPE_LEFT_BRACKET] = {Heap, Index, Precedence::CALL};
-    rules[TokenType::TOKEN_TYPE_DOT] = {nullptr, Field, Precedence::CALL};
-    rules[TokenType::TOKEN_TYPE_PLUS] = {nullptr, Binary, Precedence::TERM};
-    rules[TokenType::TOKEN_TYPE_MINUS] = {Unary, Binary, Precedence::TERM};
-    rules[TokenType::TOKEN_TYPE_STAR] = {Unary, Binary, Precedence::FACTOR};
-    rules[TokenType::TOKEN_TYPE_STAR_STAR] = {nullptr, Binary, Precedence::EXPONENT};
+    rules[TokenType::TOKEN_TYPE_LEFT_PAREN] = {Expressions::Group, Expressions::Call, Precedence::CALL};
+    rules[TokenType::TOKEN_TYPE_LEFT_BRACKET] = {Expressions::Heap, Expressions::Index, Precedence::CALL};
+    rules[TokenType::TOKEN_TYPE_DOT] = {nullptr, Expressions::Field, Precedence::CALL};
+    rules[TokenType::TOKEN_TYPE_PLUS] = {nullptr, Expressions::Binary, Precedence::TERM};
+    rules[TokenType::TOKEN_TYPE_MINUS] = {Expressions::Unary, Expressions::Binary, Precedence::TERM};
+    rules[TokenType::TOKEN_TYPE_STAR] = {Expressions::Unary, Expressions::Binary, Precedence::FACTOR};
+    rules[TokenType::TOKEN_TYPE_STAR_STAR] = {nullptr, Expressions::Binary, Precedence::EXPONENT};
     rules[TokenType::TOKEN_TYPE_STAR_EQUAL] = {nullptr, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_SLASH] = {nullptr, Binary, Precedence::FACTOR};
-    rules[TokenType::TOKEN_TYPE_BANG] = {Unary, nullptr, Precedence::TERM};
-    rules[TokenType::TOKEN_TYPE_BANG_EQUAL] = {nullptr, Binary, Precedence::EQUALITY};
-    rules[TokenType::TOKEN_TYPE_EQUAL_EQUAL] = {nullptr, Binary, Precedence::EQUALITY};
-    rules[TokenType::TOKEN_TYPE_GREATER] = {nullptr, Binary, Precedence::COMPARISON};
-    rules[TokenType::TOKEN_TYPE_GREATER_GREATER] = {nullptr, Binary, Precedence::SHIFT};
-    rules[TokenType::TOKEN_TYPE_GREATER_EQUAL] = {nullptr, Binary, Precedence::COMPARISON};
-    rules[TokenType::TOKEN_TYPE_LESS] = {nullptr, Binary, Precedence::COMPARISON};
-    rules[TokenType::TOKEN_TYPE_LESS_LESS] = {nullptr, Binary, Precedence::SHIFT};
-    rules[TokenType::TOKEN_TYPE_LESS_EQUAL] = {nullptr, Binary, Precedence::COMPARISON};
-    rules[TokenType::TOKEN_TYPE_AND] = {Unary, Binary, Precedence::BITWISE_AND};
-    rules[TokenType::TOKEN_TYPE_AND_AND] = {nullptr, And, Precedence::AND};
-    rules[TokenType::TOKEN_TYPE_PIPE] = {nullptr, Binary, Precedence::BITWISE_OR};
-    rules[TokenType::TOKEN_TYPE_PIPE_PIPE] = {nullptr, Or, Precedence::OR};
-    rules[TokenType::TOKEN_TYPE_PERCENT] = {nullptr, Binary, Precedence::MODULO};
-    rules[TokenType::TOKEN_TYPE_CARET] = {nullptr, Binary, Precedence::BITWISE_XOR};
-    rules[TokenType::TOKEN_TYPE_TILDE] = {Unary, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_STRING_LITERAL] = {String, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_CHARACTER] = {Number, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_INTEGER] = {Number, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_FLOAT] = {Number, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_IDENTIFIER] = {Variable, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_I8] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_I16] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_I32] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_I64] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_U8] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_U16] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_U32] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_U64] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_F32] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_F64] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_ISIZE] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_USIZE] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_BOOL] = {Cast, nullptr, Precedence::UNARY};
-    rules[TokenType::TOKEN_TYPE_NULL] = {Literal, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_TRUE] = {Literal, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_FALSE] = {Literal, nullptr, Precedence::NONE};
-    rules[TokenType::TOKEN_TYPE_IN] = {nullptr, Include, Precedence::CALL};
-    rules[TokenType::TOKEN_TYPE_QUESTION] = {nullptr, Ternary, Precedence::TERNARY};
+    rules[TokenType::TOKEN_TYPE_SLASH] = {nullptr, Expressions::Binary, Precedence::FACTOR};
+    rules[TokenType::TOKEN_TYPE_BANG] = {Expressions::Unary, nullptr, Precedence::TERM};
+    rules[TokenType::TOKEN_TYPE_BANG_EQUAL] = {nullptr, Expressions::Binary, Precedence::EQUALITY};
+    rules[TokenType::TOKEN_TYPE_EQUAL_EQUAL] = {nullptr, Expressions::Binary, Precedence::EQUALITY};
+    rules[TokenType::TOKEN_TYPE_GREATER] = {nullptr, Expressions::Binary, Precedence::COMPARISON};
+    rules[TokenType::TOKEN_TYPE_GREATER_GREATER] = {nullptr, Expressions::Binary, Precedence::SHIFT};
+    rules[TokenType::TOKEN_TYPE_GREATER_EQUAL] = {nullptr, Expressions::Binary, Precedence::COMPARISON};
+    rules[TokenType::TOKEN_TYPE_LESS] = {nullptr, Expressions::Binary, Precedence::COMPARISON};
+    rules[TokenType::TOKEN_TYPE_LESS_LESS] = {nullptr, Expressions::Binary, Precedence::SHIFT};
+    rules[TokenType::TOKEN_TYPE_LESS_EQUAL] = {nullptr, Expressions::Binary, Precedence::COMPARISON};
+    rules[TokenType::TOKEN_TYPE_AND] = {Expressions::Unary, Expressions::Binary, Precedence::BITWISE_AND};
+    rules[TokenType::TOKEN_TYPE_AND_AND] = {nullptr, Expressions::And, Precedence::AND};
+    rules[TokenType::TOKEN_TYPE_PIPE] = {nullptr, Expressions::Binary, Precedence::BITWISE_OR};
+    rules[TokenType::TOKEN_TYPE_PIPE_PIPE] = {nullptr, Expressions::Or, Precedence::OR};
+    rules[TokenType::TOKEN_TYPE_PERCENT] = {nullptr, Expressions::Binary, Precedence::MODULO};
+    rules[TokenType::TOKEN_TYPE_CARET] = {nullptr, Expressions::Binary, Precedence::BITWISE_XOR};
+    rules[TokenType::TOKEN_TYPE_TILDE] = {Expressions::Unary, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_STRING_LITERAL] = {Expressions::String, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_CHARACTER] = {Expressions::Number, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_INTEGER] = {Expressions::Number, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_FLOAT] = {Expressions::Number, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_IDENTIFIER] = {Expressions::Variable, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_I8] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_I16] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_I32] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_I64] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_U8] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_U16] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_U32] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_U64] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_F32] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_F64] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_ISIZE] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_USIZE] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_BOOL] = {Expressions::Cast, nullptr, Precedence::UNARY};
+    rules[TokenType::TOKEN_TYPE_NULL] = {Expressions::Literal, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_TRUE] = {Expressions::Literal, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_FALSE] = {Expressions::Literal, nullptr, Precedence::NONE};
+    rules[TokenType::TOKEN_TYPE_IN] = {nullptr, Expressions::Include, Precedence::CALL};
+    rules[TokenType::TOKEN_TYPE_QUESTION] = {nullptr, Expressions::Ternary, Precedence::TERNARY};
     return rules;
 };
 
-const auto rules = BuildRules();
-
 std::unique_ptr<AstNode> Parser::Expression() {
+}
+
+std::unique_ptr<AstNode> Parser::ReturnStatement() {
+    auto ret = AstNode::New(AstNodeType::RETURN);
+    if (Match(TokenType::TOKEN_TYPE_SEMICOLON)) {
+        return ret;
+    }
+    auto what = Expression();
+    ret->AddNode(std::move(what));
+    return ret;
 }
 
 std::unique_ptr<AstNode> Parser::Statement() {
@@ -131,13 +142,16 @@ std::unique_ptr<AstNode> Parser::Statement() {
     if (Match(TokenType::TOKEN_TYPE_LEFT_BRACE)) {
         return Block();
     }
+    if (Match(TokenType::TOKEN_TYPE_RETURN)) {
+        return ReturnStatement();
+    }
     Error(current, "Unsupported instruction");
-    return nullptrptr;
+    return nullptr;
 }
 
 std::unique_ptr<AstNode> Parser::ModuleStatement() {
     auto node = AstNode::New(AstNodeType::MODULE);
-    std::unique_ptr<AstNode> name = nullptrptr;
+    std::unique_ptr<AstNode> name = nullptr;
     do {
         Consume(TokenType::TOKEN_TYPE_IDENTIFIER, "Expected identifier");
         if (!name) {
@@ -148,7 +162,8 @@ std::unique_ptr<AstNode> Parser::ModuleStatement() {
             get->AddNode(AstNode::New(AstNodeType::NAME, previous));
             name = std::move(get);
         }
-    } while (Match(TokenType::TOKEN_TYPE_DOT));
+    }
+    while (Match(TokenType::TOKEN_TYPE_DOT));
 
     Consume(TokenType::TOKEN_TYPE_SEMICOLON, "Expected semicolon after statement");
 
@@ -190,7 +205,7 @@ std::unique_ptr<AstNode> Parser::BuildType(std::unique_ptr<AstNode> base) {
     return base;
 }
 
-std::unique_ptr<AstNode> Parser::NodeFromType(const Token &token) {
+std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
     switch (token.type) {
         case TokenType::TOKEN_TYPE_I8:
             return AstNode::New(AstNodeType::I8);
@@ -216,7 +231,7 @@ std::unique_ptr<AstNode> Parser::NodeFromType(const Token &token) {
             return AstNode::New(AstNodeType::BOOL);
         default: {
             Error(token, "Unsupported type");
-            return nullptrptr;
+            return nullptr;
         }
     }
 }
@@ -237,7 +252,8 @@ std::unique_ptr<AstNode> Parser::Declaration() {
             if (!MatchType())
                 break;
             function->AddNode(std::move(Declaration()));
-        } while (Match(TokenType::TOKEN_TYPE_COMMA));
+        }
+        while (Match(TokenType::TOKEN_TYPE_COMMA));
         Consume(TokenType::TOKEN_TYPE_RIGHT_PAREN, "Expected ')'");
 
         return function;
@@ -275,7 +291,7 @@ std::vector<std::unique_ptr<AstNode> > Parser::Parse() {
     return nodes;
 }
 
-void Parser::Error(const Token &token, const std::string &message) {
+void Parser::Error(const Token& token, const std::string& message) {
     std::cerr << message << " at line: " << token.line << " at: " << token.value << std::endl;
     throw std::exception();
 }
@@ -361,7 +377,7 @@ bool Parser::Match(TokenType type) {
     return false;
 }
 
-void Parser::Consume(TokenType type, const std::string &error) {
+void Parser::Consume(TokenType type, const std::string& error) {
     if (Check(type)) {
         Advance();
         return;

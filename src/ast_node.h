@@ -45,6 +45,7 @@ enum class AstNodeType {
     
     FUNCTION,
     VARIABLE,
+    RETURN,
 };
 
 const char* AstNodeTypeToString(AstNodeType e);
