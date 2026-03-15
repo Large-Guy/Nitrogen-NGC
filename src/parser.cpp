@@ -17,9 +17,9 @@ public:
     // Special expression statement
     static std::unique_ptr<AstNode> AppendAssign(Parser& parser, std::unique_ptr<AstNode> target) {
         auto assignment = parser.current_;
-        parser.Advance();
         switch (assignment.type) {
             case TokenType::TOKEN_TYPE_EQUAL: {
+                parser.Advance();
                 auto assign = AstNode::New(AstNodeType::ASSIGN);
                 assign->AddNode(std::move(target));
                 assign->AddNode(std::move(parser.Expression()));
@@ -96,6 +96,11 @@ public:
     }
 
     static std::unique_ptr<AstNode> Heap(Parser& parser, bool canAssign) {
+        auto node = AstNode::New(AstNodeType::HEAP);
+        auto value = parser.Expression();
+        parser.Consume(TokenType::TOKEN_TYPE_RIGHT_BRACKET, "Expected closing ']'");
+        node->AddNode(std::move(value));
+        return node;
     }
 
     static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {

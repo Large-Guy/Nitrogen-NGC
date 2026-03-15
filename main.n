@@ -1,6 +1,10 @@
 module program;
 
-f32<3> main()
+i32 main()
 {
-    return (10f, 3f, 200f);
+    i32 a = 1;
+    i32& b = &a;
+
+    i32* c = [5 + 16]; // heap
+    i32& d = c;
 }
