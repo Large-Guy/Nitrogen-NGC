@@ -71,6 +71,7 @@ std::string TokenTypeToString(TokenType type) {
         case TokenType::TOKEN_TYPE_ISIZE: return "TOKEN_TYPE_ISIZE";
         case TokenType::TOKEN_TYPE_USIZE: return "TOKEN_TYPE_USIZE";
         case TokenType::TOKEN_TYPE_STRING: return "TOKEN_TYPE_STRING";
+        case TokenType::TOKEN_TYPE_LET: return "TOKEN_TYPE_LET";
         case TokenType::TOKEN_TYPE_NULL: return "TOKEN_TYPE_NULL";
         case TokenType::TOKEN_TYPE_TRUE: return "TOKEN_TYPE_TRUE";
         case TokenType::TOKEN_TYPE_FALSE: return "TOKEN_TYPE_FALSE";
@@ -344,7 +345,7 @@ TokenType Lexer::Type() {
                         case 'f': return Keyword(2, "", TokenType::TOKEN_TYPE_IF);
                         case 'n': {
                             if (current_ - start_ > 2) {
-                                switch (View(1)) {
+                                switch (View(2)) {
                                     case 't': return Keyword(3, "erface", TokenType::TOKEN_TYPE_INTERFACE);
                                 }
                             }

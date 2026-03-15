@@ -84,9 +84,13 @@ enum class AstNodeType {
     
     ASSIGN,
     CAST,
+    REINTERPRET,
     HEAP,
 
     LIST,
+    INDEX,
+    CALL,
+    CONTAINS,
 };
 
 const char* AstNodeTypeToString(AstNodeType e);
@@ -105,6 +109,7 @@ public:
     AstNode* operator[](size_t index) const;
     void AddNode(std::unique_ptr<AstNode> node);
     void RemoveNode(const AstNode* node);
+    std::unique_ptr<AstNode> Clone();
     
     void Debug(uint32_t depth = 0) const;
 

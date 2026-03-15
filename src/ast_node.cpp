@@ -67,9 +67,13 @@ const char* AstNodeTypeToString(AstNodeType e) {
             
         case AstNodeType::ASSIGN: return "ASSIGN";
         case AstNodeType::CAST: return "CAST";
+        case AstNodeType::REINTERPRET: return "REINTERPRET";
         case AstNodeType::HEAP: return "HEAP";
 
         case AstNodeType::LIST: return "LIST";
+
+        case AstNodeType::INDEX: return "INDEX";
+        case AstNodeType::CALL: return "CALL";
             
         default: return "unknown";
     }
@@ -107,6 +111,14 @@ void AstNode::RemoveNode(const AstNode *node) {
             return;
         }
     }
+}
+
+std::unique_ptr<AstNode> AstNode::Clone() {
+    auto node = std::unique_ptr<AstNode>(new AstNode(type, token));
+    for (const auto & child : children_) {
+        node->AddNode(child->Clone());
+    }
+    return node;
 }
 
 void AstNode::Debug(uint32_t depth) const {

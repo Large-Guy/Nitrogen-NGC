@@ -1,5 +1,6 @@
 #include "parser.h"
 
+#include <algorithm>
 #include <functional>
 #include <iostream>
 #include <unordered_set>
@@ -15,18 +16,18 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::rules_ = {};
 class Expressions {
 public:
     // Special expression statement
-    static std::unique_ptr<AstNode> AppendAssign(Parser& parser, std::unique_ptr<AstNode> target) {
-        auto assignment = parser.current_;
+    static std::unique_ptr<AstNode> Assign(Parser& parser, std::unique_ptr<AstNode> target, bool canAssign) {
+        auto assignment = parser.previous_;
         switch (assignment.type) {
             case TokenType::TOKEN_TYPE_EQUAL: {
-                parser.Advance();
                 auto assign = AstNode::New(AstNodeType::ASSIGN);
                 assign->AddNode(std::move(target));
                 assign->AddNode(std::move(parser.Expression()));
                 return assign;
             }
             default: {
-                return target;
+                parser.Error(assignment, "Invalid assignment operator");
+                return nullptr;
             }
         }
     }
@@ -93,6 +94,20 @@ public:
     }
 
     static std::unique_ptr<AstNode> Cast(Parser& parser, bool canAssign) {
+        auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
+        std::unique_ptr<AstNode> cast;
+        if (parser.Match(TokenType::TOKEN_TYPE_BANG)) {
+            cast = AstNode::New(AstNodeType::REINTERPRET);
+        }
+        else {
+            cast = AstNode::New(AstNodeType::CAST);
+        }
+        parser.Consume(TokenType::TOKEN_TYPE_LEFT_PAREN, "Expected opening '('");
+        cast->AddNode(std::move(type));
+        cast->AddNode(parser.Expression());
+        parser.Consume(TokenType::TOKEN_TYPE_RIGHT_PAREN, "Expected closing ')'");
+
+        return cast;
     }
 
     static std::unique_ptr<AstNode> Heap(Parser& parser, bool canAssign) {
@@ -106,10 +121,6 @@ public:
     static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {
         auto variable = parser.previous_;
         auto variable_name = AstNode::New(AstNodeType::NAME, variable);
-        if (canAssign) {
-            //TODO: assign
-            return AppendAssign(parser, std::move(variable_name));
-        }
         return variable_name;
     }
 
@@ -220,18 +231,109 @@ public:
     }
 
     static std::unique_ptr<AstNode> Interval(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        auto group = [&](std::unique_ptr<AstNode> prior) -> std::unique_ptr<AstNode> {
+            std::unique_ptr<AstNode> entry = nullptr;
+            if (parser.Match(TokenType::TOKEN_TYPE_LEFT_BRACKET)) {
+                entry = AstNode::New(AstNodeType::GREATER_EQUAL);
+            } else if (parser.Match(TokenType::TOKEN_TYPE_LEFT_PAREN)) {
+                entry = AstNode::New(AstNodeType::GREATER);
+            }
+            else {
+                parser.Error(parser.previous_, "Expected '(' or '['");
+                return nullptr;
+            }
+            auto a = parser.Expression();
+            parser.Consume(TokenType::TOKEN_TYPE_COMMA, "Expected ','");
+            auto b = parser.Expression();
+            std::unique_ptr<AstNode> exit = nullptr;
+            if (parser.Match(TokenType::TOKEN_TYPE_RIGHT_BRACKET)) {
+                exit = AstNode::New(AstNodeType::LESS_EQUAL);
+            } else if (parser.Match(TokenType::TOKEN_TYPE_RIGHT_PAREN)) {
+                exit = AstNode::New(AstNodeType::LESS);
+            }
+            else {
+                parser.Error(parser.previous_, "Expected ')' or ']'");
+                return nullptr;
+            }
+            auto and_ = AstNode::New(AstNodeType::AND);
+            entry->AddNode(std::move(prior->Clone()));
+            entry->AddNode(std::move(a));
+
+            exit->AddNode(std::move(prior->Clone()));
+            exit->AddNode(std::move(b));
+
+            and_->AddNode(std::move(entry));
+            and_->AddNode(std::move(exit));
+            return and_;
+        };
+        std::unique_ptr<AstNode> root = group(std::move(left->Clone()));
+        while (!parser.Match(TokenType::TOKEN_TYPE_RIGHT_BRACE)) {
+            std::unique_ptr<AstNode> node = nullptr;
+            if (parser.Match(TokenType::TOKEN_TYPE_COMMA)) {
+
+                node = AstNode::New(AstNodeType::EQUAL);
+                node->AddNode(std::move(left->Clone()));
+                node->AddNode(std::move(parser.Expression()));
+
+            }
+            else if (parser.Match(TokenType::TOKEN_TYPE_IDENTIFIER) &&
+                (parser.previous_.value == "u" || parser.previous_.value == "U")
+                ) {
+                node = group(std::move(left->Clone()));
+            }
+            else {
+                parser.Error(parser.previous_, "Expected ',', 'u' or 'U'");
+            }
+            auto or_ = AstNode::New(AstNodeType::OR);
+            or_->AddNode(std::move(root));
+            or_->AddNode(std::move(node));
+            root = std::move(or_);
+        }
+        return root;
     }
 
     static std::unique_ptr<AstNode> Include(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        auto contains = AstNode::New(AstNodeType::CONTAINS);
+        contains->AddNode(std::move(left));
+        auto container = parser.Expression();
+        contains->AddNode(std::move(container));
+        return contains;
     }
 
     static std::unique_ptr<AstNode> Call(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        auto node = AstNode::New(AstNodeType::CALL);
+        node->AddNode(std::move(left));
+
+        if (!parser.Check(TokenType::TOKEN_TYPE_RIGHT_PAREN)) {
+            do {
+                auto argument = parser.Expression();
+                node->AddNode(std::move(argument));
+            } while (parser.Check(TokenType::TOKEN_TYPE_COMMA));
+        }
+
+        parser.Consume(TokenType::TOKEN_TYPE_RIGHT_PAREN, "Expected closing ')'");
+
+        return node;
     }
 
     static std::unique_ptr<AstNode> Index(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        auto node = AstNode::New(AstNodeType::INDEX);
+        node->AddNode(std::move(left));
+        auto index = parser.Expression();
+        parser.Consume(TokenType::TOKEN_TYPE_RIGHT_BRACKET, "Expected closing ']'");
+        node->AddNode(std::move(index));
+
+        return node;
     }
 
     static std::unique_ptr<AstNode> Field(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+        auto node = AstNode::New(AstNodeType::GET);
+        node->AddNode(std::move(left));
+        parser.Consume(TokenType::TOKEN_TYPE_IDENTIFIER, "Expected field name");
+        auto field = AstNode::New(AstNodeType::NAME, parser.previous_);
+        node->AddNode(std::move(field));
+
+        return node;
     }
 
     static std::unique_ptr<AstNode> Ternary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
@@ -242,6 +344,7 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     std::unordered_map<TokenType, ParseRule> rules{};
     rules[TokenType::TOKEN_TYPE_LEFT_PAREN] = {Expressions::Group, Expressions::Call, Precedence::CALL};
     rules[TokenType::TOKEN_TYPE_LEFT_BRACKET] = {Expressions::Heap, Expressions::Index, Precedence::CALL};
+    rules[TokenType::TOKEN_TYPE_LEFT_BRACE] = {nullptr, Expressions::Interval, Precedence::CALL};
     rules[TokenType::TOKEN_TYPE_DOT] = {nullptr, Expressions::Field, Precedence::CALL};
     rules[TokenType::TOKEN_TYPE_PLUS] = {nullptr, Expressions::Binary, Precedence::TERM};
     rules[TokenType::TOKEN_TYPE_MINUS] = {Expressions::Unary, Expressions::Binary, Precedence::TERM};
@@ -288,6 +391,7 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     rules[TokenType::TOKEN_TYPE_FALSE] = {Expressions::Literal, nullptr, Precedence::NONE};
     rules[TokenType::TOKEN_TYPE_IN] = {nullptr, Expressions::Include, Precedence::CALL};
     rules[TokenType::TOKEN_TYPE_QUESTION] = {nullptr, Expressions::Ternary, Precedence::TERNARY};
+    rules[TokenType::TOKEN_TYPE_EQUAL] = {nullptr, Expressions::Assign, Precedence::ASSIGNMENT};
     return rules;
 };
 
@@ -357,6 +461,8 @@ std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
             return AstNode::New(AstNodeType::F64);
         case TokenType::TOKEN_TYPE_BOOL:
             return AstNode::New(AstNodeType::BOOL);
+        case TokenType::TOKEN_TYPE_LET:
+            return AstNode::New(AstNodeType::INFER);
         default: {
             Error(token, "Unsupported type");
             return nullptr;
@@ -565,6 +671,9 @@ bool Parser::CheckType() const {
         return true;
     }
     if (Check(TokenType::TOKEN_TYPE_STRING)) {
+        return true;
+    }
+    if (Check(TokenType::TOKEN_TYPE_LET)) {
         return true;
     }
     return false;
