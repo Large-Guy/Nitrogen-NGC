@@ -93,6 +93,10 @@ std::unique_ptr<AstNode> AstNode::New(AstNodeType type, std::optional<Token> tok
     return node;
 }
 
+size_t AstNode::ChildrenCount() const {
+    return children_.size();
+}
+
 AstNode::~AstNode() = default;
 
 AstNode * AstNode::parent() const {

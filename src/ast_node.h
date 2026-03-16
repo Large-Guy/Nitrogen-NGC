@@ -108,6 +108,9 @@ public:
 
     AstNode(const AstNode&) = delete;
     AstNode& operator=(const AstNode&) = delete;
+
+    size_t ChildrenCount() const;
+
     AstNode(AstNode&&) = default;
     AstNode& operator=(AstNode&&) = default;
     ~AstNode();

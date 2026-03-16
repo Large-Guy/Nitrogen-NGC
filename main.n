@@ -1,13 +1,6 @@
 module program;
 
-f32[] filter(f32[]& arr, bool filter(f32 x))
-{
-    return arr;
-}
-
 i32 main()
 {
-    let list = (-2f, 3f, -5f, 7f, 11f, -13f);
-    i32 casting = 3f as i32;
-    let positive = filter(list, bool(f32 x) { return x > 0; });
+    return 0;
 }

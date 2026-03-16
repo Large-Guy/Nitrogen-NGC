@@ -4,6 +4,7 @@
 #include "ast_node.h"
 #include "lexer.h"
 #include "parser.h"
+#include "backends/llvm.h"
 
 int main() {
     std::string path = "main.n";
@@ -24,6 +25,10 @@ int main() {
     for (auto& node: nodes) {
         node->Debug();
     }
+
+    LlvmBackend backend = {};
+
+    backend.Generate(std::move(nodes));
 
     return 0;
 }
