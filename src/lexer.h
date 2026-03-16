@@ -60,6 +60,7 @@ enum class TokenType {
     QUESTION,
 
     IN,
+    AS,
 
     //Special
     MOVE,

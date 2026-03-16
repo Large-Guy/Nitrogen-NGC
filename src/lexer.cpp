@@ -448,6 +448,7 @@ TokenType Lexer::Type() {
         case 'o': return Keyword(1, "perator", TokenType::OPERATOR);
         case 'l': return Keyword(1, "et", TokenType::LET);
         case 'b': return Keyword(1, "ool", TokenType::BOOL);
+        case 'a': return Keyword(1, "s", TokenType::AS);
         default: break;
     }
     return TokenType::IDENTIFIER;

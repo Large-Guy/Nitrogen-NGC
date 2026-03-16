@@ -9,4 +9,6 @@ add_executable(ngc src/main.cpp
         src/ast_node.cpp
         src/ast_node.h
         src/parser.cpp
-        src/parser.h)
+        src/parser.h
+        src/backends/backend.cpp
+        src/backends/backend.h)

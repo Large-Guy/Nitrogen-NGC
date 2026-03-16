@@ -93,28 +93,31 @@ public:
         }
     }
 
-    static std::unique_ptr<AstNode> CastOrLambda(Parser& parser, bool canAssign) {
+    static std::unique_ptr<AstNode> Lambda(Parser& parser, bool canAssign) {
         auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
-        if (parser.Match(TokenType::LEFT_PAREN)) {
-            //lambda
-            auto function = AstNode::New(AstNodeType::LAMBDA);
-            function->AddNode(std::move(type));
+        parser.Consume(TokenType::LEFT_PAREN, "Expected '('");
+        //lambda
+        auto function = AstNode::New(AstNodeType::LAMBDA);
+        function->AddNode(std::move(type));
 
-            if (!parser.Check(TokenType::RIGHT_PAREN)) {
-                do {
-                    auto argument = parser.Expression();
-                    function->AddNode(std::move(argument));
-                } while (parser.Check(TokenType::COMMA));
-            }
-
-            parser.Consume(TokenType::RIGHT_PAREN, "Expected ')'");
-
-            auto body = parser.Statement();
-            function->AddNode(std::move(body));
-
-            return function;
+        if (!parser.Check(TokenType::RIGHT_PAREN)) {
+            do {
+                if (!parser.MatchType())
+                    parser.Error(parser.current_, "Expected type");
+                auto argument = parser.Declaration();
+                function->AddNode(std::move(argument));
+            } while (parser.Check(TokenType::COMMA));
         }
 
+        parser.Consume(TokenType::RIGHT_PAREN, "Expected ')'");
+
+        auto body = parser.Statement();
+        function->AddNode(std::move(body));
+
+        return function;
+    }
+
+    static std::unique_ptr<AstNode> Cast(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
         std::unique_ptr<AstNode> cast;
         if (parser.Match(TokenType::BANG)) {
             cast = AstNode::New(AstNodeType::REINTERPRET);
@@ -122,8 +125,10 @@ public:
         else {
             cast = AstNode::New(AstNodeType::CAST);
         }
+        parser.Advance();
+        auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
         cast->AddNode(std::move(type));
-        cast->AddNode(parser.Expression());
+        cast->AddNode(std::move(left));
 
         return cast;
     }
@@ -404,19 +409,20 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::BuildRules() {
     rules[TokenType::INTEGER] = {Expressions::Number, nullptr, Precedence::NONE};
     rules[TokenType::FLOAT] = {Expressions::Number, nullptr, Precedence::NONE};
     rules[TokenType::IDENTIFIER] = {Expressions::Variable, nullptr, Precedence::NONE};
-    rules[TokenType::I8] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::I16] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::I32] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::I64] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::U8] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::U16] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::U32] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::U64] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::F32] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::F64] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::ISIZE] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::USIZE] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
-    rules[TokenType::BOOL] = {Expressions::CastOrLambda, nullptr, Precedence::UNARY};
+    rules[TokenType::I8] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::I16] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::I32] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::I64] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::U8] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::U16] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::U32] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::U64] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::F32] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::F64] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::ISIZE] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::USIZE] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::BOOL] = {Expressions::Lambda, nullptr, Precedence::UNARY};
+    rules[TokenType::AS] = {nullptr, Expressions::Cast, Precedence::UNARY};
     rules[TokenType::NULL_] = {Expressions::Literal, nullptr, Precedence::NONE};
     rules[TokenType::TRUE] = {Expressions::Literal, nullptr, Precedence::NONE};
     rules[TokenType::FALSE] = {Expressions::Literal, nullptr, Precedence::NONE};

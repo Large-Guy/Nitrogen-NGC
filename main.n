@@ -8,6 +8,6 @@ f32[] filter(f32[]& arr, bool filter(f32 x))
 i32 main()
 {
     let list = (-2f, 3f, -5f, 7f, 11f, -13f);
-    i32 casting = i32 3f;
+    i32 casting = 3f as i32;
     let positive = filter(list, bool(f32 x) { return x > 0; });
 }
