@@ -1,5 +1,13 @@
 module program;
 
-void main(i32 a, i32 b)
+i32 max(i32 a, i32 b)
 {
+    if(a > b)
+    {
+        return a;
+    }
+    else if(b > a)
+    {
+        return b;
+    }
 }

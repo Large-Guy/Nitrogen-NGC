@@ -1,9 +1,36 @@
 #include "parser.h"
+#include "ast/ast_node.h"
 
 #include <algorithm>
 #include <functional>
 #include <iostream>
 #include <unordered_set>
+
+#include "ast/nodes/assign_node.h"
+#include "ast/nodes/binary_node.h"
+#include "ast/nodes/cast_node.h"
+#include "ast/nodes/float_node.h"
+#include "ast/nodes/heap_node.h"
+#include "ast/nodes/identifier_node.h"
+#include "ast/nodes/integer_node.h"
+#include "ast/nodes/lambda_node.h"
+#include "ast/nodes/literal_node.h"
+#include "ast/nodes/tuple_node.h"
+#include "ast/nodes/type_node.h"
+#include "ast/nodes/unary_node.h"
+#include "ast/nodes/variable_node.h"
+#include "memory_utils.h"
+#include "ast/nodes/call_node.h"
+#include "ast/nodes/compound_statement.h"
+#include "ast/nodes/do_while_node.h"
+#include "ast/nodes/field_node.h"
+#include "ast/nodes/for_node.h"
+#include "ast/nodes/function_node.h"
+#include "ast/nodes/if_node.h"
+#include "ast/nodes/index_node.h"
+#include "ast/nodes/module_node.h"
+#include "ast/nodes/return_node.h"
+#include "ast/nodes/while_node.h"
 
 Parser::Parser(Lexer lexer) : lexer_(std::move(lexer)) {
     if (rules_.empty())
@@ -16,13 +43,12 @@ std::unordered_map<TokenType, Parser::ParseRule> Parser::rules_ = {};
 class Expressions {
 public:
     // Special expression statement
-    static std::unique_ptr<AstNode> Assign(Parser& parser, std::unique_ptr<AstNode> target, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> Assign(Parser& parser, std::unique_ptr<ExpressionNode> target,
+                                                  bool canAssign) {
         auto assignment = parser.previous_;
         switch (assignment.type) {
             case TokenType::EQUAL: {
-                auto assign = AstNode::New(AstNodeType::ASSIGN);
-                assign->AddNode(std::move(target));
-                assign->AddNode(std::move(parser.Expression()));
+                auto assign = std::make_unique<AssignNode>(std::move(target), std::move(parser.Expression()));
                 return assign;
             }
             default: {
@@ -31,29 +57,30 @@ public:
             }
         }
     }
-    
-    static std::unique_ptr<AstNode> Number(Parser& parser, bool canAssign) {
+
+    static std::unique_ptr<ExpressionNode> Number(Parser& parser, bool canAssign) {
         auto num = parser.previous_;
         if (parser.previous_.type == TokenType::FLOAT) {
-            return AstNode::New(AstNodeType::FLOAT, num);
+            return std::make_unique<FloatNode>(std::stod(num.value));
         }
-        return AstNode::New(AstNodeType::INT, num);
+        return std::make_unique<IntegerNode>(std::stol(num.value));
     }
 
-    static std::unique_ptr<AstNode> String(Parser& parser, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> String(Parser& parser, bool canAssign) {
     }
 
-    static std::unique_ptr<AstNode> Group(Parser& parser, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> Group(Parser& parser, bool canAssign) {
         auto node = parser.Expression();
         if (parser.Match(TokenType::COMMA)) {
-            auto list = AstNode::New(AstNodeType::LIST);
-            list->AddNode(std::move(node));
+            std::vector<std::unique_ptr<ExpressionNode> > list;
+            list.push_back(std::move(node));
             do {
                 auto next = parser.Expression();
-                list->AddNode(std::move(next));
-            } while (parser.Match(TokenType::COMMA));
+                list.push_back(std::move(next));
+            }
+            while (parser.Match(TokenType::COMMA));
 
-            node = std::move(list);
+            return std::make_unique<TupleNode>(std::move(list));
         }
 
         parser.Consume(TokenType::RIGHT_PAREN, "Expected closing ')'");
@@ -61,31 +88,27 @@ public:
         return node;
     }
 
-    static std::unique_ptr<AstNode> Unary(Parser& parser, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> Unary(Parser& parser, bool canAssign) {
         auto unary = parser.previous_;
         auto operand = parser.ParsePrecedence(Parser::Precedence::UNARY);
         switch (unary.type) {
             case TokenType::MINUS: {
-                auto negate = AstNode::New(AstNodeType::NEGATE);
-                negate->AddNode(std::move(operand));
+                auto negate = std::make_unique<UnaryNode>(UnaryNodeType::NEGATE, std::move(operand));
                 return negate;
             }
             case TokenType::AND: {
-                auto address = AstNode::New(AstNodeType::ADDRESS);
-                address->AddNode(std::move(operand));
+                auto address = std::make_unique<UnaryNode>(UnaryNodeType::ADDRESS, std::move(operand));
                 return address;
             }
             case TokenType::STAR: {
-                auto negate = AstNode::New(AstNodeType::LOCK);
-                negate->AddNode(std::move(operand));
-                return negate;
+                auto lock = std::make_unique<UnaryNode>(UnaryNodeType::LOCK, std::move(operand));
+                return lock;
             }
             case TokenType::BANG: {
-                auto negate = AstNode::New(AstNodeType::NOT);
-                negate->AddNode(std::move(operand));
+                auto negate = std::make_unique<UnaryNode>(UnaryNodeType::NOT, std::move(operand));
                 return negate;
             }
-                
+
             default: {
                 parser.Error(unary, "Unsupported unary expression type");
                 return nullptr;
@@ -93,69 +116,61 @@ public:
         }
     }
 
-    static std::unique_ptr<AstNode> Lambda(Parser& parser, bool canAssign) {
-        auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
+    static std::unique_ptr<ExpressionNode> Lambda(Parser& parser, bool canAssign) {
+        auto return_type = parser.BuildType(parser.NodeFromType(parser.previous_));
         parser.Consume(TokenType::LEFT_PAREN, "Expected '('");
-        //lambda
-        auto function = AstNode::New(AstNodeType::LAMBDA);
-        function->AddNode(std::move(type));
+
+        std::vector<std::unique_ptr<DefinitionNode> > parameters;
 
         if (!parser.Check(TokenType::RIGHT_PAREN)) {
             do {
                 if (!parser.MatchType())
                     parser.Error(parser.current_, "Expected type");
                 auto argument = parser.Declaration();
-                function->AddNode(std::move(argument));
-            } while (parser.Check(TokenType::COMMA));
+                parameters.push_back(std::move(argument));
+            }
+            while (parser.Check(TokenType::COMMA));
         }
 
         parser.Consume(TokenType::RIGHT_PAREN, "Expected ')'");
 
         auto body = parser.Statement();
-        function->AddNode(std::move(body));
 
+        auto function = std::make_unique<LambdaNode>(std::move(return_type), std::move(parameters), std::move(body));
         return function;
     }
 
-    static std::unique_ptr<AstNode> Cast(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        std::unique_ptr<AstNode> cast;
-        if (parser.Match(TokenType::BANG)) {
-            cast = AstNode::New(AstNodeType::REINTERPRET);
-        }
-        else {
-            cast = AstNode::New(AstNodeType::CAST);
-        }
+    static std::unique_ptr<ExpressionNode> Cast(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
         parser.Advance();
         auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
-        cast->AddNode(std::move(type));
-        cast->AddNode(std::move(left));
 
-        return cast;
+        std::unique_ptr<AstNode> cast;
+        if (parser.Match(TokenType::BANG)) {
+            return std::make_unique<CastNode>(CastNodeType::REINTERPRET, std::move(type), std::move(left));
+        }
+        return std::make_unique<CastNode>(CastNodeType::STATIC, std::move(type), std::move(left));
     }
 
-    static std::unique_ptr<AstNode> Heap(Parser& parser, bool canAssign) {
-        auto node = AstNode::New(AstNodeType::HEAP);
+    static std::unique_ptr<ExpressionNode> Heap(Parser& parser, bool canAssign) {
         auto value = parser.Expression();
         parser.Consume(TokenType::RIGHT_BRACKET, "Expected closing ']'");
-        node->AddNode(std::move(value));
-        return node;
+        return std::make_unique<HeapNode>(std::move(value));
     }
 
-    static std::unique_ptr<AstNode> Variable(Parser& parser, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> Variable(Parser& parser, bool canAssign) {
         auto variable = parser.previous_;
-        auto variable_name = AstNode::New(AstNodeType::NAME, variable);
-        return variable_name;
+        return std::make_unique<IdentifierNode>(variable.value);
     }
 
-    static std::unique_ptr<AstNode> Literal(Parser& parser, bool canAssign) {
+    static std::unique_ptr<ExpressionNode> Literal(Parser& parser, bool canAssign) {
         auto token = parser.previous_;
         switch (token.type) {
             case TokenType::NULL_:
-                return AstNode::New(AstNodeType::_NULL);
+                return std::make_unique<LiteralNode>(LiteralNodeType::_NULL);
             case TokenType::TRUE:
-                return AstNode::New(AstNodeType::TRUE);
+                return std::make_unique<LiteralNode>(LiteralNodeType::TRUE);
             case TokenType::FALSE:
-                return AstNode::New(AstNodeType::FALSE);
+                return std::make_unique<LiteralNode>(LiteralNodeType::FALSE);
             default: {
                 parser.Error(token, "Unsupported literal type");
                 return nullptr;
@@ -163,87 +178,70 @@ public:
         }
     }
 
-    static std::unique_ptr<AstNode> Binary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    static std::unique_ptr<ExpressionNode>
+    Binary(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
         auto op = parser.previous_;
 
         auto rule = parser.Rule(op.type);
 
         auto right = parser.ParsePrecedence(static_cast<Parser::Precedence>(static_cast<int>(rule.precedence) + 1));
 
-        std::unique_ptr<AstNode> node = nullptr;
+        std::unique_ptr<ExpressionNode> node = nullptr;
 
         switch (op.type) {
             case TokenType::PLUS: {
-                node = AstNode::New(AstNodeType::ADD);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::ADD, std::move(left), std::move(right));
             }
             case TokenType::MINUS: {
-                node = AstNode::New(AstNodeType::SUBTRACT);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::SUBTRACT, std::move(left), std::move(right));
             }
             case TokenType::STAR: {
-                node = AstNode::New(AstNodeType::MULTIPLY);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::MULTIPLY, std::move(left), std::move(right));
             }
             case TokenType::SLASH: {
-                node = AstNode::New(AstNodeType::DIVIDE);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::DIVIDE, std::move(left), std::move(right));
             }
             case TokenType::STAR_STAR: {
-                node = AstNode::New(AstNodeType::EXPONENT);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::EXPONENT, std::move(left), std::move(right));
             }
             case TokenType::PERCENT: {
-                node = AstNode::New(AstNodeType::MODULO);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::MODULO, std::move(left), std::move(right));
             }
             case TokenType::PIPE: {
-                node = AstNode::New(AstNodeType::BITWISE_OR);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::BITWISE_OR, std::move(left), std::move(right));
             }
             case TokenType::CARET: {
-                node = AstNode::New(AstNodeType::BITWISE_XOR);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::BITWISE_XOR, std::move(left), std::move(right));
             }
             case TokenType::AND: {
-                node = AstNode::New(AstNodeType::BITWISE_AND);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::BITWISE_AND, std::move(left), std::move(right));
             }
             case TokenType::GREATER: {
-                node = AstNode::New(AstNodeType::GREATER);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::GREATER, std::move(left), std::move(right));
             }
             case TokenType::GREATER_EQUAL: {
-                node = AstNode::New(AstNodeType::GREATER_EQUAL);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::GREATER_EQUAL, std::move(left), std::move(right));
             }
             case TokenType::LESS: {
-                node = AstNode::New(AstNodeType::LESS);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::LESS, std::move(left), std::move(right));
             }
             case TokenType::LESS_EQUAL: {
-                node = AstNode::New(AstNodeType::LESS_EQUAL);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::LESS_EQUAL, std::move(left), std::move(right));
             }
             case TokenType::GREATER_GREATER: {
-                node = AstNode::New(AstNodeType::SHIFT_RIGHT);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::BITWISE_RIGHT, std::move(left), std::move(right));
             }
             case TokenType::EQUAL_EQUAL: {
-                node = AstNode::New(AstNodeType::EQUAL);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::EQUAL, std::move(left), std::move(right));
             }
             case TokenType::LESS_LESS: {
-                node = AstNode::New(AstNodeType::SHIFT_LEFT);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::BITWISE_LEFT, std::move(left), std::move(right));
             }
             case TokenType::AND_AND: {
-                node = AstNode::New(AstNodeType::AND);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::AND, std::move(left), std::move(right));
             }
             case TokenType::PIPE_PIPE: {
-                node = AstNode::New(AstNodeType::OR);
-                break;
+                return std::make_unique<BinaryNode>(BinaryNodeType::OR, std::move(left), std::move(right));
             }
             default: {
                 parser.Error(op, "Unsupported binary expression type");
@@ -251,127 +249,115 @@ public:
             }
         }
 
-        node->AddNode(std::move(left));
-        node->AddNode(std::move(right));
-
         return node;
     }
 
-    static std::unique_ptr<AstNode> Interval(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto group = [&](std::unique_ptr<AstNode> prior) -> std::unique_ptr<AstNode> {
-            std::unique_ptr<AstNode> entry = nullptr;
-            if (parser.Match(TokenType::LEFT_BRACKET)) {
-                entry = AstNode::New(AstNodeType::GREATER_EQUAL);
-            } else if (parser.Match(TokenType::LEFT_PAREN)) {
-                entry = AstNode::New(AstNodeType::GREATER);
-            }
-            else {
-                parser.Error(parser.previous_, "Expected '(' or '['");
-                return nullptr;
-            }
+    static std::unique_ptr<ExpressionNode> Interval(Parser& parser, std::unique_ptr<ExpressionNode> left,
+                                                    bool canAssign) {
+        auto group = [&](std::unique_ptr<ExpressionNode> prior) -> std::unique_ptr<ExpressionNode> {
+            auto enter = parser.current_;
+            parser.Advance();
+
             auto a = parser.Expression();
             parser.Consume(TokenType::COMMA, "Expected ','");
             auto b = parser.Expression();
-            std::unique_ptr<AstNode> exit = nullptr;
-            if (parser.Match(TokenType::RIGHT_BRACKET)) {
-                exit = AstNode::New(AstNodeType::LESS_EQUAL);
-            } else if (parser.Match(TokenType::RIGHT_PAREN)) {
-                exit = AstNode::New(AstNodeType::LESS);
+
+            std::unique_ptr<BinaryNode> entry = nullptr;
+            if (enter.type == TokenType::LEFT_BRACKET) {
+                entry = std::make_unique<BinaryNode>(BinaryNodeType::GREATER_EQUAL,
+                                                     UniqueCast<ExpressionNode>(prior->Clone()), std::move(a));
+            } else if (enter.type == TokenType::LEFT_PAREN) {
+                entry = std::make_unique<BinaryNode>(BinaryNodeType::GREATER,
+                                                     UniqueCast<ExpressionNode>(prior->Clone()), std::move(a));
+            } else {
+                parser.Error(parser.previous_, "Expected '(' or '['");
+                return nullptr;
             }
-            else {
+            std::shared_ptr<BinaryNode> node;
+            std::unique_ptr<BinaryNode> exit = nullptr;
+            if (parser.Match(TokenType::RIGHT_BRACKET)) {
+                exit = std::make_unique<BinaryNode>(BinaryNodeType::LESS_EQUAL,
+                                                    UniqueCast<ExpressionNode>(prior->Clone()), std::move(b));
+            } else if (parser.Match(TokenType::RIGHT_PAREN)) {
+                exit = std::make_unique<BinaryNode>(BinaryNodeType::LESS, UniqueCast<ExpressionNode>(prior->Clone()),
+                                                    std::move(b));
+            } else {
                 parser.Error(parser.previous_, "Expected ')' or ']'");
                 return nullptr;
             }
-            auto and_ = AstNode::New(AstNodeType::AND);
-            entry->AddNode(std::move(prior->Clone()));
-            entry->AddNode(std::move(a));
-
-            exit->AddNode(std::move(prior->Clone()));
-            exit->AddNode(std::move(b));
-
-            and_->AddNode(std::move(entry));
-            and_->AddNode(std::move(exit));
+            auto and_ = std::make_unique<BinaryNode>(BinaryNodeType::AND, std::move(entry), std::move(exit));
             return and_;
         };
-        std::unique_ptr<AstNode> root = group(std::move(left->Clone()));
+        auto root = group(UniqueCast<ExpressionNode>(left->Clone()));
         while (!parser.Match(TokenType::RIGHT_BRACE)) {
             std::unique_ptr<AstNode> node = nullptr;
             if (parser.Match(TokenType::COMMA)) {
-
-                node = AstNode::New(AstNodeType::EQUAL);
-                node->AddNode(std::move(left->Clone()));
-                node->AddNode(std::move(parser.Expression()));
-
-            }
-            else if (parser.Match(TokenType::IDENTIFIER) &&
-                (parser.previous_.value == "u" || parser.previous_.value == "U")
-                ) {
-                node = group(std::move(left->Clone()));
-            }
-            else {
+                node = std::make_unique<BinaryNode>(BinaryNodeType::EQUAL, UniqueCast<ExpressionNode>(left->Clone()),
+                                                    UniqueCast<ExpressionNode>(parser.Expression()));
+            } else if (parser.Match(TokenType::IDENTIFIER) &&
+                       (parser.previous_.value == "u" || parser.previous_.value == "U")
+            ) {
+                node = group(UniqueCast<ExpressionNode>(left->Clone()));
+            } else {
                 parser.Error(parser.previous_, "Expected ',', 'u' or 'U'");
             }
-            auto or_ = AstNode::New(AstNodeType::OR);
-            or_->AddNode(std::move(root));
-            or_->AddNode(std::move(node));
+            auto or_ = std::make_unique<BinaryNode>(BinaryNodeType::OR, UniqueCast<ExpressionNode>(std::move(root)),
+                                                    UniqueCast<ExpressionNode>(std::move(node)));
             root = std::move(or_);
         }
         return root;
     }
 
-    static std::unique_ptr<AstNode> Include(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto contains = AstNode::New(AstNodeType::CONTAINS);
+    static std::unique_ptr<ExpressionNode>
+    Include(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
+        /*auto contains = AstNode::New(AstNodeType::CONTAINS);
         contains->AddNode(std::move(left));
         auto container = parser.Expression();
         contains->AddNode(std::move(container));
-        return contains;
+        return contains;*/
+        throw std::runtime_error("Include not implemented");
     }
 
-    static std::unique_ptr<AstNode> Call(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto node = AstNode::New(AstNodeType::CALL);
-        node->AddNode(std::move(left));
-
+    static std::unique_ptr<ExpressionNode> Call(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
+        std::vector<std::unique_ptr<ExpressionNode> > args;
         if (!parser.Check(TokenType::RIGHT_PAREN)) {
             do {
                 auto argument = parser.Expression();
-                node->AddNode(std::move(argument));
-            } while (parser.Match(TokenType::COMMA));
+                args.push_back(std::move(argument));
+            }
+            while (parser.Match(TokenType::COMMA));
         }
 
         parser.Consume(TokenType::RIGHT_PAREN, "Expected closing ')'");
 
-        return node;
+        return std::make_unique<CallNode>(std::move(left), std::move(args));
     }
 
-    static std::unique_ptr<AstNode> Index(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto node = AstNode::New(AstNodeType::INDEX);
-        node->AddNode(std::move(left));
+    static std::unique_ptr<ExpressionNode> Index(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
         auto index = parser.Expression();
         parser.Consume(TokenType::RIGHT_BRACKET, "Expected closing ']'");
-        node->AddNode(std::move(index));
 
-        return node;
+        return std::make_unique<IndexNode>(std::move(left), std::move(index));
     }
 
-    static std::unique_ptr<AstNode> Field(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto node = AstNode::New(AstNodeType::GET);
-        node->AddNode(std::move(left));
+    static std::unique_ptr<ExpressionNode> Field(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
         parser.Consume(TokenType::IDENTIFIER, "Expected field name");
-        auto field = AstNode::New(AstNodeType::NAME, parser.previous_);
-        node->AddNode(std::move(field));
 
-        return node;
+        return std::make_unique<FieldNode>(std::move(left), parser.previous_.value);
     }
 
-    static std::unique_ptr<AstNode> Ternary(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
+    static std::unique_ptr<ExpressionNode>
+    Ternary(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
     }
 
-    static std::unique_ptr<AstNode> Sequence(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign) {
-        auto node = AstNode::New(AstNodeType::SEQUENCE);
+    static std::unique_ptr<ExpressionNode> Sequence(Parser& parser, std::unique_ptr<ExpressionNode> left,
+                                                    bool canAssign) {
+        /*auto node = AstNode::New(AstNodeType::SEQUENCE);
         node->AddNode(std::move(left));
         auto sequence = parser.Expression();
         node->AddNode(std::move(sequence));
-        return node;
+        return node;*/
+        return nullptr;
     }
 };
 
@@ -447,7 +433,7 @@ Parser::ParseRule Parser::Rule(const TokenType& type) {
     return {};
 }
 
-std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
+std::unique_ptr<ExpressionNode> Parser::ParsePrecedence(Precedence precedence) {
     Advance();
     auto prefix = Rule(previous_.type).prefix;
     if (prefix == nullptr) {
@@ -470,38 +456,38 @@ std::unique_ptr<AstNode> Parser::ParsePrecedence(Precedence precedence) {
     return result;
 }
 
-std::unique_ptr<AstNode> Parser::Expression(Precedence start) {
+std::unique_ptr<ExpressionNode> Parser::Expression(Precedence start) {
     return ParsePrecedence(start);
 }
 
-std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
+std::unique_ptr<TypeNode> Parser::NodeFromType(const Token& token) {
     switch (token.type) {
         case TokenType::VOID:
-            return AstNode::New(AstNodeType::VOID);
+            return std::make_unique<TypeNode>(TypeNodeType::VOID);
         case TokenType::I8:
-            return AstNode::New(AstNodeType::I8);
+            return std::make_unique<TypeNode>(TypeNodeType::I8);
         case TokenType::I16:
-            return AstNode::New(AstNodeType::I16);
+            return std::make_unique<TypeNode>(TypeNodeType::I16);
         case TokenType::I32:
-            return AstNode::New(AstNodeType::I32);
+            return std::make_unique<TypeNode>(TypeNodeType::I32);
         case TokenType::I64:
-            return AstNode::New(AstNodeType::I64);
+            return std::make_unique<TypeNode>(TypeNodeType::I64);
         case TokenType::U8:
-            return AstNode::New(AstNodeType::U8);
+            return std::make_unique<TypeNode>(TypeNodeType::U8);
         case TokenType::U16:
-            return AstNode::New(AstNodeType::U16);
+            return std::make_unique<TypeNode>(TypeNodeType::U16);
         case TokenType::U32:
-            return AstNode::New(AstNodeType::U32);
+            return std::make_unique<TypeNode>(TypeNodeType::U32);
         case TokenType::U64:
-            return AstNode::New(AstNodeType::U64);
+            return std::make_unique<TypeNode>(TypeNodeType::U64);
         case TokenType::F32:
-            return AstNode::New(AstNodeType::F32);
+            return std::make_unique<TypeNode>(TypeNodeType::F32);
         case TokenType::F64:
-            return AstNode::New(AstNodeType::F64);
+            return std::make_unique<TypeNode>(TypeNodeType::F64);
         case TokenType::BOOL:
-            return AstNode::New(AstNodeType::BOOL);
+            return std::make_unique<TypeNode>(TypeNodeType::BOOL);
         case TokenType::LET:
-            return AstNode::New(AstNodeType::INFER);
+            return std::make_unique<TypeNode>(TypeNodeType::INFERED);
         default: {
             Error(token, "Unsupported type");
             return nullptr;
@@ -509,40 +495,34 @@ std::unique_ptr<AstNode> Parser::NodeFromType(const Token& token) {
     }
 }
 
-std::unique_ptr<AstNode> Parser::BuildType(std::unique_ptr<AstNode> base) {
+std::unique_ptr<TypeNode> Parser::BuildType(std::unique_ptr<TypeNode> base) {
     if (Match(TokenType::LESS)) {
         auto size = Expression(Precedence::SHIFT);
         Consume(TokenType::GREATER, "Expected closing '>'");
-        auto simd = AstNode::New(AstNodeType::SIMD);
-        simd->AddNode(std::move(base));
-        simd->AddNode(std::move(size));
+        auto simd = std::make_unique<TypeNode>(TypeNodeType::SIMD, std::move(base), std::move(size));
         return BuildType(std::move(simd));
     }
     if (Match(TokenType::STAR)) {
-        auto owner = AstNode::New(AstNodeType::OWNER);
-        owner->AddNode(std::move(base));
+        auto owner = std::make_unique<TypeNode>(TypeNodeType::OWNER, std::move(base));
         return BuildType(std::move(owner));
     }
     if (Match(TokenType::AND)) {
-        auto borrow = AstNode::New(AstNodeType::BORROW);
-        borrow->AddNode(std::move(base));
+        auto borrow = std::make_unique<TypeNode>(TypeNodeType::BORROW, std::move(base));
         return BuildType(std::move(borrow));
     }
     if (Match(TokenType::QUESTION)) {
-        auto borrow = AstNode::New(AstNodeType::OPTIONAL);
-        borrow->AddNode(std::move(base));
+        auto borrow = std::make_unique<TypeNode>(TypeNodeType::OPTIONAL, std::move(base));
         return BuildType(std::move(borrow));
     }
     if (Match(TokenType::LEFT_BRACKET)) {
         Consume(TokenType::RIGHT_BRACKET, "Expected closing ']'");
-        auto dynamic_array = AstNode::New(AstNodeType::ARRAY);
-        dynamic_array->AddNode(std::move(base));
+        auto dynamic_array = std::make_unique<TypeNode>(TypeNodeType::ARRAY, std::move(base));
         return BuildType(std::move(dynamic_array));
     }
     return base;
 }
 
-std::unique_ptr<AstNode> Parser::Statement() {
+std::unique_ptr<StatementNode> Parser::Statement() {
     if (Match(TokenType::MODULE)) {
         return ModuleStatement();
     }
@@ -570,19 +550,16 @@ std::unique_ptr<AstNode> Parser::Statement() {
     return ExpressionStatement();
 }
 
-std::unique_ptr<AstNode> Parser::WhileStatement() {
+std::unique_ptr<StatementNode> Parser::WhileStatement() {
     Consume(TokenType::LEFT_PAREN, "Expected '('");
     auto condition = Expression();
     Consume(TokenType::RIGHT_PAREN, "Expected ')'");
     auto body = Statement();
 
-    auto while_ = AstNode::New(AstNodeType::WHILE);
-    while_->AddNode(std::move(condition));
-    while_->AddNode(std::move(body));
-    return while_;
+    return std::make_unique<WhileNode>(std::move(condition), std::move(body));
 }
 
-std::unique_ptr<AstNode> Parser::DoWhileStatement() {
+std::unique_ptr<StatementNode> Parser::DoWhileStatement() {
     auto body = Statement();
     Consume(TokenType::WHILE, "Expected 'while'");
 
@@ -590,135 +567,117 @@ std::unique_ptr<AstNode> Parser::DoWhileStatement() {
     auto condition = Expression();
     Consume(TokenType::RIGHT_PAREN, "Expected ')'");
 
-    auto do_while = AstNode::New(AstNodeType::DO);
-    do_while->AddNode(std::move(condition));
-    do_while->AddNode(std::move(body));
-    return do_while;
+    return std::make_unique<DoWhileNode>(std::move(body), std::move(condition));
 }
 
-std::unique_ptr<AstNode> Parser::ForStatement() {
+std::unique_ptr<StatementNode> Parser::ForStatement() {
     Consume(TokenType::LEFT_PAREN, "Expected '('");
-    auto for_ = AstNode::New(AstNodeType::FOR);
     auto initializer = Statement();
-    auto condition = Statement();
+    auto condition = Expression();
+    Consume(TokenType::SEMICOLON, "Expected ';'");
     auto increment = Expression();
     Consume(TokenType::RIGHT_PAREN, "Expected ')'");
     auto body = Statement();
 
-    for_->AddNode(std::move(initializer));
-    for_->AddNode(std::move(condition));
-    for_->AddNode(std::move(increment));
-    for_->AddNode(std::move(body));
-    return for_;
+    return std::make_unique<ForNode>(std::move(initializer), std::move(condition), std::move(increment),
+                                     std::move(body));
 }
 
-std::unique_ptr<AstNode> Parser::IfStatement() {
+std::unique_ptr<StatementNode> Parser::IfStatement() {
     Consume(TokenType::LEFT_PAREN, "Expected '('");
     auto condition = Expression();
     Consume(TokenType::RIGHT_PAREN, "Expected ')'");
     auto then_branch = Statement();
 
-    auto if_ = AstNode::New(AstNodeType::IF);
-    if_->AddNode(std::move(condition));
-    if_->AddNode(std::move(then_branch));
     if (Match(TokenType::ELSE)) {
         auto else_branch = Statement();
-        if_->AddNode(std::move(else_branch));
+        return std::make_unique<IfNode>(std::move(condition), std::move(then_branch), std::move(else_branch));
     }
-    return if_;
+    return std::make_unique<IfNode>(std::move(condition), std::move(then_branch), nullptr);
 }
 
-std::unique_ptr<AstNode> Parser::ReturnStatement() {
-    auto ret = AstNode::New(AstNodeType::RETURN);
+std::unique_ptr<StatementNode> Parser::ReturnStatement() {
     if (Match(TokenType::SEMICOLON)) {
-        return ret;
+        return std::make_unique<ReturnNode>(nullptr);
     }
     auto what = Expression();
-    ret->AddNode(std::move(what));
     Consume(TokenType::SEMICOLON, "Expected semicolon");
-    return ret;
+    return std::make_unique<ReturnNode>(std::move(what));
 }
 
-std::unique_ptr<AstNode> Parser::ExpressionStatement() {
+std::unique_ptr<ExpressionNode> Parser::ExpressionStatement() {
     auto expression = Expression();
     Consume(TokenType::SEMICOLON, "Expected semicolon");
     return expression;
 }
 
-std::unique_ptr<AstNode> Parser::ModuleStatement() {
-    auto node = AstNode::New(AstNodeType::MODULE);
-    std::unique_ptr<AstNode> name = nullptr;
+std::unique_ptr<ModuleNode> Parser::ModuleStatement() {
+    std::string name;
     do {
         Consume(TokenType::IDENTIFIER, "Expected identifier");
-        if (!name) {
-            name = AstNode::New(AstNodeType::NAME, previous_);
-        } else {
-            auto get = AstNode::New(AstNodeType::GET);
-            get->AddNode(std::move(name));
-            get->AddNode(AstNode::New(AstNodeType::NAME, previous_));
-            name = std::move(get);
+
+        if (!name.empty()) {
+            name += ".";
         }
+        name += previous_.value;
     }
     while (Match(TokenType::DOT));
 
     Consume(TokenType::SEMICOLON, "Expected semicolon after statement");
 
-    node->AddNode(std::move(name));
-
-    return node;
+    return std::make_unique<ModuleNode>(name);
 }
 
-std::unique_ptr<AstNode> Parser::Declaration() {
+std::unique_ptr<DefinitionNode> Parser::Declaration() {
     auto type_token = previous_;
     auto base_node = NodeFromType(type_token);
     auto type_node = BuildType(std::move(base_node));
 
     Consume(TokenType::IDENTIFIER, "Expected name after definition");
-    auto name = AstNode::New(AstNodeType::NAME, previous_);
+    auto name = previous_.value;
 
     if (Match(TokenType::LEFT_PAREN)) {
-        auto function = AstNode::New(AstNodeType::FUNCTION);
-        function->AddNode(std::move(name));
-        function->AddNode(std::move(type_node));
+        std::vector<std::unique_ptr<DefinitionNode> > args;
 
         if (!Check(TokenType::RIGHT_PAREN)) {
             do {
                 if (!MatchType())
                     Error(current_, "Expected type");
-                function->AddNode(std::move(Declaration()));
-            } while (Match(TokenType::COMMA));
+                args.push_back(std::move(Declaration()));
+            }
+            while (Match(TokenType::COMMA));
         }
 
         Consume(TokenType::RIGHT_PAREN, "Expected ')'");
 
-        return function;
+        return std::make_unique<FunctionNode>(name, std::move(type_node), std::move(args), nullptr);
     }
 
-    auto variable = AstNode::New(AstNodeType::VARIABLE);
-    variable->AddNode(std::move(name));
-    variable->AddNode(std::move(type_node));
-    return variable;
+    return std::make_unique<VariableNode>(name, std::move(type_node), nullptr);
 }
 
-std::unique_ptr<AstNode> Parser::BlockStatement() {
-    auto sequence = AstNode::New(AstNodeType::GROUP);
+std::unique_ptr<StatementNode> Parser::BlockStatement() {
+    std::vector<std::unique_ptr<StatementNode> > statements;
     while (!Match(TokenType::RIGHT_BRACE)) {
-        sequence->AddNode(Statement());
+        statements.push_back(Statement());
     }
-    return sequence;
+    return std::make_unique<CompoundStatement>(std::move(statements));
 }
 
-std::unique_ptr<AstNode> Parser::DeclarationStatement() {
+std::unique_ptr<DefinitionNode> Parser::DeclarationStatement() {
     auto definition = Declaration();
-    if (definition->type == AstNodeType::VARIABLE) {
+    if (auto variable = UniqueCast<VariableNode>(definition)) {
         if (Match(TokenType::EQUAL)) {
-            definition->AddNode(std::move(Expression()));
+            variable->value = std::move(Expression());
         }
         Consume(TokenType::SEMICOLON, "Expected ';'");
-    } else if (definition->type == AstNodeType::FUNCTION) {
-        definition->AddNode(Statement());
+        return variable;
     }
-    return definition;
+    if (auto function = UniqueCast<FunctionNode>(definition)) {
+        function->body = Statement();
+        return function;
+    }
+    throw std::runtime_error("Unexpected declaration type");
 }
 
 void Parser::Error(const Token& token, const std::string& message) {

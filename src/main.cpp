@@ -1,10 +1,8 @@
 #include <fstream>
 #include <iostream>
 
-#include "ast_node.h"
 #include "lexer.h"
 #include "parser.h"
-#include "backends/llvm.h"
 
 int main() {
     std::string path = "main.n";
@@ -19,16 +17,16 @@ int main() {
     Lexer lexer = {content};
 
     Parser parser = {std::move(lexer)};
-    
+
     auto nodes = parser.Parse();
 
     for (auto& node: nodes) {
-        node->Debug();
+        //node->Debug();
     }
 
-    LlvmBackend backend = {};
+    //LlvmBackend backend = {};
 
-    backend.Generate(std::move(nodes));
+    //backend.Generate(std::move(nodes));
 
     return 0;
 }

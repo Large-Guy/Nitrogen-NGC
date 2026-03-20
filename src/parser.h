@@ -2,9 +2,14 @@
 #define NCC_PARSER_H
 #include <functional>
 
-#include "ast_node.h"
+#include "ast/ast_node.h"
 #include "lexer.h"
+#include "ast/nodes/definition_node.h"
+#include "ast/nodes/expression_node.h"
+#include "ast/nodes/module_node.h"
 
+
+class TypeNode;
 
 class Parser {
 public:
@@ -13,7 +18,6 @@ public:
     std::vector<std::unique_ptr<AstNode> > Parse();
 
 private:
-
     enum class Precedence {
         NONE,
         ASSIGNMENT,
@@ -36,8 +40,9 @@ private:
     };
 
     struct ParseRule {
-        std::function<std::unique_ptr<AstNode>(Parser& parser, bool canAssign)> prefix;
-        std::function<std::unique_ptr<AstNode>(Parser& parser, std::unique_ptr<AstNode> left, bool canAssign)> infix;
+        std::function<std::unique_ptr<ExpressionNode>(Parser& parser, bool canAssign)> prefix;
+        std::function<std::unique_ptr<ExpressionNode>(Parser& parser, std::unique_ptr<ExpressionNode> left,
+                                                      bool canAssign)> infix;
         Precedence precedence;
     };
 
@@ -47,39 +52,38 @@ private:
 
     ParseRule Rule(const TokenType& type);
 
-    std::unique_ptr<AstNode> ParsePrecedence(Precedence precedence);
+    std::unique_ptr<ExpressionNode> ParsePrecedence(Precedence precedence);
 
-    std::unique_ptr<AstNode> Expression(Precedence start = Precedence::ASSIGNMENT);
+    std::unique_ptr<ExpressionNode> Expression(Precedence start = Precedence::ASSIGNMENT);
 
-    std::unique_ptr<AstNode> NodeFromType(const Token& token);
+    std::unique_ptr<TypeNode> NodeFromType(const Token& token);
 
-    std::unique_ptr<AstNode> BuildType(std::unique_ptr<AstNode> base);
+    std::unique_ptr<TypeNode> BuildType(std::unique_ptr<TypeNode> base);
 
     // Statements
 
 
+    std::unique_ptr<StatementNode> Statement();
 
-    std::unique_ptr<AstNode> Statement();
+    std::unique_ptr<StatementNode> WhileStatement();
 
-    std::unique_ptr<AstNode> WhileStatement();
+    std::unique_ptr<StatementNode> DoWhileStatement();
 
-    std::unique_ptr<AstNode> DoWhileStatement();
+    std::unique_ptr<StatementNode> ForStatement();
 
-    std::unique_ptr<AstNode> ForStatement();
+    std::unique_ptr<StatementNode> IfStatement();
 
-    std::unique_ptr<AstNode> IfStatement();
+    std::unique_ptr<StatementNode> ReturnStatement();
 
-    std::unique_ptr<AstNode> ReturnStatement();
+    std::unique_ptr<ExpressionNode> ExpressionStatement();
 
-    std::unique_ptr<AstNode> ExpressionStatement();
+    std::unique_ptr<ModuleNode> ModuleStatement();
 
-    std::unique_ptr<AstNode> ModuleStatement();
+    std::unique_ptr<DefinitionNode> Declaration();
 
-    std::unique_ptr<AstNode> Declaration();
+    std::unique_ptr<StatementNode> BlockStatement();
 
-    std::unique_ptr<AstNode> BlockStatement();
-
-    std::unique_ptr<AstNode> DeclarationStatement();
+    std::unique_ptr<DefinitionNode> DeclarationStatement();
 
     void Error(const Token& token, const std::string& message);
 

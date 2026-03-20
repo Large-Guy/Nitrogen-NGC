@@ -2,14 +2,14 @@
 #define NGC_BACKEND_H
 #include <vector>
 
-#include "../ast_node.h"
+#include "../ast/ast_node.h"
 
 
 class Backend {
 public:
     virtual ~Backend() = default;
 
-    virtual void Generate(std::vector<std::unique_ptr<AstNode>> nodes) = 0;
+    virtual void Generate(std::vector<std::unique_ptr<AstNode> > nodes) = 0;
 };
 
 
