@@ -3,4 +3,8 @@ module program;
 void main()
 {
     i32 a = 64;
+    i32& borrow = &a;
+
+    a = 32;
+    borrow = 16;
 }

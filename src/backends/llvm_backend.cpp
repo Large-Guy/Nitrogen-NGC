@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "../memory_utils.h"
+#include "../ast/nodes/AddressNode.h"
 #include "../ast/nodes/assign_node.h"
 #include "../ast/nodes/binary_node.h"
 #include "../ast/nodes/compound_statement.h"
@@ -85,7 +86,7 @@ Type *LLVMBackend::GenerateType(TypeNode *type) {
 }
 
 std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::Drill(std::pair<Value *, std::unique_ptr<TypeNode>> value) {
-    if (value.second->type == TypeNodeType::BORROW || value.second->type == TypeNodeType::OWNER) {
+    if (value.second->subtype != nullptr && (value.second->subtype->type == TypeNodeType::BORROW || value.second->subtype->type == TypeNodeType::OWNER)) {
         auto new_type = std::move(value.second->subtype);
         return Drill(std::pair(builder_->CreateLoad(GenerateType(new_type.get()), value.first), std::move(new_type)));
     }
@@ -108,6 +109,9 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
         builder_->CreateStore(variable->value ? GenerateRValue(variable->value.get()).first : ConstantAggregateZero::get(type), var);
         scope_.Declare(variable->name, var, UniqueCast<TypeNode>(variable->type->Clone()));
         return std::pair<Value*, std::unique_ptr<TypeNode>>(var, variable->type.get());
+    }
+    if (auto address = is<AddressNode>(get)) {
+        return GenerateLValue(get);
     }
     if (auto return_statement = is<ReturnNode>(get)) {
         if (return_statement->value == nullptr) {
@@ -193,6 +197,9 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateLValue(AstNod
         auto var = scope_.Lookup(variable->identifier);
         auto type = scope_.Type(variable->identifier);
         return std::pair(var, UniqueCast<TypeNode>(type->Clone()));
+    }
+    if (const auto address = is<AddressNode>(get)) {
+        return GenerateLValue(address->target.get());
     }
     throw std::runtime_error("Unsupported expression type");
 }
