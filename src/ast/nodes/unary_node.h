@@ -7,8 +7,6 @@
 
 enum class UnaryNodeType {
     NEGATE,
-    ADDRESS,
-    LOCK,
     NOT,
 };
 

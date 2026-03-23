@@ -74,6 +74,10 @@ add_executable(ngc src/main.cpp
         src/backends/llvm_backend.h
         src/backends/shared/Scope.cpp
         src/backends/shared/Scope.h
+        src/ast/nodes/AddressNode.cpp
+        src/ast/nodes/AddressNode.h
+        src/ast/nodes/LockNode.cpp
+        src/ast/nodes/LockNode.h
 )
 
 find_package(LLVM 18.1.8 REQUIRED CONFIG)

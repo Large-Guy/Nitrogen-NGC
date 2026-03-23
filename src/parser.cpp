@@ -20,6 +20,7 @@
 #include "ast/nodes/unary_node.h"
 #include "ast/nodes/variable_node.h"
 #include "memory_utils.h"
+#include "ast/nodes/AddressNode.h"
 #include "ast/nodes/call_node.h"
 #include "ast/nodes/compound_statement.h"
 #include "ast/nodes/do_while_node.h"
@@ -28,6 +29,7 @@
 #include "ast/nodes/function_node.h"
 #include "ast/nodes/if_node.h"
 #include "ast/nodes/index_node.h"
+#include "ast/nodes/LockNode.h"
 #include "ast/nodes/module_node.h"
 #include "ast/nodes/return_node.h"
 #include "ast/nodes/while_node.h"
@@ -97,11 +99,11 @@ public:
                 return negate;
             }
             case TokenType::AND: {
-                auto address = std::make_unique<UnaryNode>(UnaryNodeType::ADDRESS, std::move(operand));
+                auto address = std::make_unique<AddressNode>(std::move(operand));
                 return address;
             }
             case TokenType::STAR: {
-                auto lock = std::make_unique<UnaryNode>(UnaryNodeType::LOCK, std::move(operand));
+                auto lock = std::make_unique<LockNode>(std::move(operand));
                 return lock;
             }
             case TokenType::BANG: {
