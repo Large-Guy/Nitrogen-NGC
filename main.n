@@ -1,10 +1,15 @@
 module program;
 
-void main()
+i64 factorial(i64 x)
 {
-    i32 a = 64;
-    i32& borrow = &a;
+    i64 i = 1;
+    i64 res = 1;
 
-    a = 32;
-    borrow = 16;
+    while(i <= x)
+    {
+        res = res * i;
+        i = i + 1;
+    }
+
+    return res;
 }

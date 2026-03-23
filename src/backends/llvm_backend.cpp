@@ -10,10 +10,14 @@
 #include "../ast/nodes/float_node.h"
 #include "../ast/nodes/function_node.h"
 #include "../ast/nodes/identifier_node.h"
+#include "../ast/nodes/if_node.h"
 #include "../ast/nodes/integer_node.h"
+#include "../ast/nodes/literal_node.h"
 #include "../ast/nodes/module_node.h"
 #include "../ast/nodes/return_node.h"
+#include "../ast/nodes/unary_node.h"
 #include "../ast/nodes/variable_node.h"
+#include "../ast/nodes/while_node.h"
 
 void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
     context_ = std::make_unique<LLVMContext>();
@@ -121,11 +125,59 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
         builder_->CreateRet(GenerateRValue(return_statement->value.get()).first);
         return {};
     }
+    if (auto if_statement = is<IfNode>(get)) {
+        auto condition = GenerateRValue(if_statement->condition.get());
+        auto then_block = BasicBlock::Create(*context_, "if.then", func);
+        auto else_block = BasicBlock::Create(*context_, "if.else", func);
+        auto merge_block = BasicBlock::Create(*context_, "if.merge", func);
+
+        builder_->CreateCondBr(condition.first, then_block, else_block);
+
+        builder_->SetInsertPoint(then_block);
+        GenerateRValue(if_statement->then.get());
+        builder_->CreateBr(merge_block);
+
+        builder_->SetInsertPoint(else_block);
+        if (if_statement->otherwise != nullptr) {
+            GenerateRValue(if_statement->otherwise.get());
+        }
+        builder_->CreateBr(merge_block);
+
+        builder_->SetInsertPoint(merge_block);
+        return {};
+    }
+    if (auto while_statement = is<WhileNode>(get)) {
+        auto cond_block = BasicBlock::Create(*context_, "while.cond", func);
+        auto loop_block = BasicBlock::Create(*context_, "while.loop", func);
+        auto merge_block = BasicBlock::Create(*context_, "while.merge", func);
+
+        builder_->CreateBr(cond_block);
+        builder_->SetInsertPoint(cond_block);
+        auto condition = GenerateRValue(while_statement->condition.get());
+        builder_->CreateCondBr(condition.first, loop_block, merge_block);
+
+        builder_->SetInsertPoint(loop_block);
+        auto result = GenerateRValue(while_statement->body.get());
+        builder_->CreateBr(cond_block);
+
+        builder_->SetInsertPoint(merge_block);
+        return {};
+    }
     if (const auto integer = is<IntegerNode>(get)) {
         return std::pair(ConstantInt::get(*context_, APInt(64, integer->value, false)), std::make_unique<TypeNode>(TypeNodeType::I64));
     }
     if (const auto floating = is<FloatNode>(get)) {
         return std::pair(ConstantFP::get(*context_, APFloat(floating->value)), std::make_unique<TypeNode>(TypeNodeType::F64));
+    }
+    if (const auto literal = is<LiteralNode>(get)) {
+        switch (literal->type) {
+            case LiteralNodeType::TRUE:
+                return std::pair(ConstantInt::get(*context_, APInt(1, 1)), std::make_unique<TypeNode>(TypeNodeType::BOOL));
+            case LiteralNodeType::FALSE:
+                return std::pair(ConstantInt::get(*context_, APInt(1, 0)), std::make_unique<TypeNode>(TypeNodeType::BOOL));
+            case LiteralNodeType::_NULL:
+                return std::pair(ConstantPointerNull::get(PointerType::get(*context_, 0)), std::make_unique<TypeNode>(TypeNodeType::BORROW));
+        }
     }
     if (const auto variable = is<IdentifierNode>(get)) {
         auto var = scope_.Lookup(variable->identifier);
@@ -189,6 +241,21 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
                 throw std::runtime_error("Unsupported binary expression type");
         }
     }
+    if (const auto unary = is<UnaryNode>(get)) {
+        auto x = GenerateRValue(unary->operand.get());
+        if (x.first->getType()->isFloatTy()) {
+            throw std::runtime_error("Floats are not supported");
+        }
+
+        switch (unary->type) {
+            case UnaryNodeType::NEGATE:
+                return std::pair(builder_->CreateNeg(x.first, "negtmp"), std::make_unique<TypeNode>(TypeNodeType::I64));
+            case UnaryNodeType::NOT:
+                return std::pair(builder_->CreateNot(x.first, "nottmp"), std::make_unique<TypeNode>(TypeNodeType::I64));
+            default:
+                throw std::runtime_error("Unsupported unary expression type");
+        }
+    }
     throw std::runtime_error("Unsupported expression type");
 }
 
@@ -209,11 +276,13 @@ void LLVMBackend::GenerateFunction(FunctionNode *function) {
     Type *return_type = GenerateType(function->return_type.get());
     std::vector<Type *> args;
     std::vector<std::string> names;
+    std::vector<std::unique_ptr<TypeNode>> types;
     for (const auto &arg: function->args) {
         if (const auto variable = is<VariableNode>(arg.get())) {
             auto type = GenerateType(variable->type.get());
             args.push_back(type);
             names.push_back(variable->name);
+            types.push_back(UniqueCast<TypeNode>(variable->type->Clone()));
         } else {
             throw std::runtime_error("Unsupported argument type");
         }
@@ -221,15 +290,22 @@ void LLVMBackend::GenerateFunction(FunctionNode *function) {
 
     auto function_type = FunctionType::get(return_type, args, false);
 
-    auto func = Function::Create(function_type, GlobalValue::ExternalLinkage, function->name, module_.get());
+    func = Function::Create(function_type, GlobalValue::ExternalLinkage, function->name, module_.get());
 
+    scope_.PushScope();
     unsigned idx = 0;
     for (auto &arg: func->args()) {
-        arg.setName(names[idx++]);
+        arg.setName(names[idx]);
+        scope_.Declare(names[idx], &arg, std::move(types[idx]));
+        idx++;
     }
 
-    block_ = BasicBlock::Create(*context_, "entry", func);
-    builder_->SetInsertPoint(block_);
+    auto block = BasicBlock::Create(*context_, "entry", func);
+    builder_->SetInsertPoint(block);
 
     GenerateRValue(function->body.get());
+
+    func = nullptr;
+
+    scope_.PopScope();
 }

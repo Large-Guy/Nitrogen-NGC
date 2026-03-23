@@ -32,7 +32,7 @@ private:
 
     Scope<Value> scope_;
 
-    BasicBlock* block_ = nullptr;
+    Function* func = nullptr;
 };
 
 
