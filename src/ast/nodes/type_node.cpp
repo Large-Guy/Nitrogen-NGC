@@ -11,5 +11,5 @@ std::unique_ptr<AstNode> TypeNode::Clone() const {
     if (subtype != nullptr) {
         sub = UniqueCast<TypeNode>(subtype->Clone());
     }
-    return std::make_unique<TypeNode>(type, std::move(sub), UniqueCast<ExpressionNode>(capacity->Clone()));
+    return std::make_unique<TypeNode>(type, std::move(sub), capacity ? UniqueCast<ExpressionNode>(capacity->Clone()) : nullptr);
 }

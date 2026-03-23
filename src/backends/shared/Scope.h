@@ -18,8 +18,8 @@ public:
         stack.pop_back();
     }
 
-    void Declare(const std::string& name, Value* value, TypeNode* type) {
-        stack.back()[name] = std::make_pair(value, type);
+    void Declare(const std::string& name, Value* value, std::unique_ptr<TypeNode> type) {
+        stack.back()[name] = std::pair(value, std::move(type));
     }
 
     Value* Lookup(const std::string& name) {
@@ -36,14 +36,14 @@ public:
         for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
             auto found = it->find(name);
             if (found != it->end()) {
-                return found->second.second;
+                return found->second.second.get();
             }
         }
         return nullptr;
     }
 private:
 
-    std::vector<std::unordered_map<std::string, std::pair<Value*, TypeNode*>>> stack;
+    std::vector<std::unordered_map<std::string, std::pair<Value*, std::unique_ptr<TypeNode>>>> stack;
 };
 
 
