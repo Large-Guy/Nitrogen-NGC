@@ -79,4 +79,15 @@ size_t TypeNode::Size() const {
         case TypeNodeType::INFERED:
             return 0;
     }
+    return 0;
+}
+
+bool TypeNode::Equal(const TypeNode* other) const {
+    if (other == nullptr || type != other->type) {
+        return false;
+    }
+    if (subtype == nullptr || other->subtype == nullptr) {
+        return subtype == nullptr && other->subtype == nullptr;
+    }
+    return subtype->Equal(other->subtype.get()); // TODO: handle capacity
 }

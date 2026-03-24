@@ -15,13 +15,15 @@ public:
 
     int64_t Evaluate(ExpressionNode* unique);
 
-    Type* GenerateType(TypeNode* type);
+    Type* GenerateType(const TypeNode *type);
 
     std::pair<Value *, std::unique_ptr<TypeNode>> Drill(std::pair<Value *, std::unique_ptr<TypeNode>> value);
 
-    std::pair<Value*, std::unique_ptr<TypeNode>> Cast(std::pair<Value*, std::unique_ptr<TypeNode>> value, TypeNode* type);
+    std::pair<Value*, std::unique_ptr<TypeNode>> Cast(std::pair<Value*, std::unique_ptr<TypeNode>> value, const TypeNode *type);
 
-    std::pair<Value *, std::unique_ptr<TypeNode>> GenerateRValue(AstNode *get);
+    std::unique_ptr<TypeNode> Promote(std::pair<Value*, std::unique_ptr<TypeNode>>& a, std::pair<Value*, std::unique_ptr<TypeNode>>& b);
+
+    std::pair<Value *, std::unique_ptr<TypeNode>> GenerateRValue(AstNode *get, const TypeNode* expected);
 
     std::pair<Value *, std::unique_ptr<TypeNode>> GenerateLValue(AstNode *get);
 
@@ -35,6 +37,8 @@ private:
     Scope<Value> scope_;
 
     Function* func = nullptr;
+    BasicBlock* exit = nullptr;
+    Value* ret = nullptr;
 };
 
 

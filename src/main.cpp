@@ -29,5 +29,7 @@ int main() {
 
     backend.Generate(std::move(nodes));
 
+    system("gcc output.o -o output");
+
     return 0;
 }

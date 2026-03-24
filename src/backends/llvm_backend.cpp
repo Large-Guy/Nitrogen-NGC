@@ -1,6 +1,16 @@
 #include "llvm_backend.h"
 
 #include <iostream>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/TargetParser/Host.h>
+#include <llvm/MC/TargetRegistry.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Target/TargetOptions.h>
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/Verifier.h>
 
 #include "../memory_utils.h"
 #include "../ast/nodes/AddressNode.h"
@@ -20,13 +30,35 @@
 #include "../ast/nodes/variable_node.h"
 #include "../ast/nodes/while_node.h"
 
+const static TypeNode BOOLEAN = TypeNode(TypeNodeType::BOOL);
+
 void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
+    InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
+    InitializeNativeTargetAsmParser();
+
+    std::string target_triple = sys::getDefaultTargetTriple();
+
+    std::string error;
+    auto* target = llvm::TargetRegistry::lookupTarget(target_triple, error);
+    if (!target) {
+        llvm::errs() << "Target lookup failed: " << error;
+        return;
+    }
+
+    auto cpu = llvm::sys::getHostCPUName();
+
+    llvm::TargetOptions options;
+    auto target_machine = target->createTargetMachine(target_triple, cpu, "", options, Reloc::PIC_);
+
     context_ = std::make_unique<LLVMContext>();
     builder_ = std::make_unique<IRBuilder<> >(*context_);
 
     for (const auto &node: nodes) {
         if (const auto module = is<ModuleNode>(node.get())) {
             module_ = std::make_unique<Module>(module->path, *context_);
+            module_->setTargetTriple(target_triple);
+            module_->setDataLayout(target_machine->createDataLayout());
             std::cout << "Module: " << module->path << std::endl;
             continue;
         }
@@ -35,14 +67,54 @@ void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
         }
     }
 
+    if (!module_) {
+        throw std::runtime_error("No module node was provided");
+    }
+
+    if (verifyModule(*module_, &llvm::errs())) {
+        llvm::errs() << "Module verification failed; skipping optimization and codegen.\n";
+        module_->print(llvm::outs(), nullptr);
+        return;
+    }
+
     module_->print(llvm::outs(), nullptr);
+
+    PassBuilder pass_builder(target_machine);
+    LoopAnalysisManager lam;
+    FunctionAnalysisManager fam;
+    CGSCCAnalysisManager cgam;
+    ModuleAnalysisManager mam;
+
+    pass_builder.registerModuleAnalyses(mam);
+    pass_builder.registerCGSCCAnalyses(cgam);
+    pass_builder.registerFunctionAnalyses(fam);
+    pass_builder.registerLoopAnalyses(lam);
+    pass_builder.crossRegisterProxies(lam, fam, cgam, mam);
+
+    ModulePassManager pass_manager = pass_builder.buildPerModuleDefaultPipeline(OptimizationLevel::O2);
+    pass_manager.run(*module_, mam);
+
+    llvm::outs() << "\n=== AFTER O2 ===\n";
+    module_->print(llvm::outs(), nullptr);
+
+    std::error_code ec;
+    raw_fd_ostream dest("output.o", ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+        llvm::errs() << "Could not open output file: " << ec.message() << "\n";
+        return;
+    }
+
+    legacy::PassManager codegen_pass_manager;
+    target_machine->addPassesToEmitFile(codegen_pass_manager, dest, nullptr, CodeGenFileType::ObjectFile);
+    codegen_pass_manager.run(*module_);
+    dest.close();
 }
 
 int64_t LLVMBackend::Evaluate(ExpressionNode *unique) {
     throw std::runtime_error("Not implemented");
 }
 
-Type *LLVMBackend::GenerateType(TypeNode *type) {
+Type *LLVMBackend::GenerateType(const TypeNode *type) {
     switch (type->type) {
         case TypeNodeType::VOID:
             return Type::getVoidTy(*context_);
@@ -99,7 +171,10 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::Drill(std::pair<Value
 }
 
 std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::Cast(std::pair<Value *, std::unique_ptr<TypeNode>> value,
-    TypeNode *type) {
+                                                                const TypeNode *type) {
+    if (type == nullptr || value.second->Equal(type)) { // null type implies no cast
+        return value;
+    }
     auto llvm_type = GenerateType(type);
     auto unique_type = UniqueCast<TypeNode>(type->Clone());
 
@@ -138,36 +213,70 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::Cast(std::pair<Value 
     throw std::runtime_error("Invalid cast");
 }
 
-std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNode *get) {
+std::unique_ptr<TypeNode> LLVMBackend::Promote(std::pair<Value *, std::unique_ptr<TypeNode>>& a,
+    std::pair<Value *, std::unique_ptr<TypeNode>>& b) {
+    if (a.second->Integer() && b.second->Integer()) {
+        //promote to larger type
+        if (a.second->Size() > b.second->Size()) {
+            return UniqueCast<TypeNode>(a.second->Clone());
+        }
+        return UniqueCast<TypeNode>(b.second->Clone());
+    }
+    if (a.second->Float() && b.second->Float()) {
+        //promote to larger type
+        if (a.second->Size() > b.second->Size()) {
+            return UniqueCast<TypeNode>(a.second->Clone());
+        }
+        return UniqueCast<TypeNode>(b.second->Clone());
+    }
+    if (a.second->Float() && b.second->Integer()) {
+        return UniqueCast<TypeNode>(a.second->Clone()); // promote to float
+    }
+    if (b.second->Float() && a.second->Integer()) {
+        return UniqueCast<TypeNode>(b.second->Clone()); // promote to float
+    }
+    std::cerr << "Unhandled promotion rule, could be possible source of bug" << std::endl;
+    return UniqueCast<TypeNode>(a.second->Clone());
+}
+
+std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNode *get, const TypeNode* expected) {
     if (auto compound = is<CompoundStatement>(get)) {
         scope_.PushScope();
         std::pair<Value*, std::unique_ptr<TypeNode>> last = {};
         for (const auto &statement: compound->statements) {
-            last = GenerateRValue(statement.get());
+            last = GenerateRValue(statement.get(), expected);
+
+            if (builder_->GetInsertBlock()->getTerminator())
+                break;
         }
         scope_.PopScope();
-        return last;
+        if (last.first == nullptr)
+            return {};
+        return Cast(std::move(last), expected);
     }
     if (auto variable = is<VariableNode>(get)) {
         auto* type = GenerateType(variable->type.get());
         auto* var = builder_->CreateAlloca(type, nullptr, variable->name);
-        builder_->CreateStore(variable->value ? GenerateRValue(variable->value.get()).first : ConstantAggregateZero::get(type), var);
+        builder_->CreateStore(variable->value ? GenerateRValue(variable->value.get(), variable->type.get()).first : ConstantAggregateZero::get(type), var);
         scope_.Declare(variable->name, var, UniqueCast<TypeNode>(variable->type->Clone()));
         return std::pair(var, UniqueCast<TypeNode>(variable->type->Clone()));
     }
     if (auto address = is<AddressNode>(get)) {
-        return GenerateLValue(get);
+        return Cast(GenerateLValue(get), expected);
     }
     if (auto return_statement = is<ReturnNode>(get)) {
         if (return_statement->value == nullptr) {
-            builder_->CreateRetVoid();
+            builder_->CreateBr(exit);
             return {};
         }
-        builder_->CreateRet(GenerateRValue(return_statement->value.get()).first);
-        return {};
+        auto result = GenerateRValue(return_statement->value.get(), expected);
+        //result.first
+        builder_->CreateStore(result.first, ret, false);
+        builder_->CreateBr(exit);
+        return result;
     }
     if (auto if_statement = is<IfNode>(get)) {
-        auto condition = GenerateRValue(if_statement->condition.get());
+        auto condition = GenerateRValue(if_statement->condition.get(), &BOOLEAN);
         auto then_block = BasicBlock::Create(*context_, "if.then", func);
         auto else_block = BasicBlock::Create(*context_, "if.else", func);
         auto merge_block = BasicBlock::Create(*context_, "if.merge", func);
@@ -175,16 +284,25 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
         builder_->CreateCondBr(condition.first, then_block, else_block);
 
         builder_->SetInsertPoint(then_block);
-        GenerateRValue(if_statement->then.get());
-        builder_->CreateBr(merge_block);
+        GenerateRValue(if_statement->then.get(), expected);
+        if (!then_block->getTerminator())
+            builder_->CreateBr(merge_block);
 
         builder_->SetInsertPoint(else_block);
         if (if_statement->otherwise != nullptr) {
-            GenerateRValue(if_statement->otherwise.get());
-        }
-        builder_->CreateBr(merge_block);
+            GenerateRValue(if_statement->otherwise.get(), expected);
 
-        builder_->SetInsertPoint(merge_block);
+        }
+
+        if (!else_block->getTerminator())
+            builder_->CreateBr(merge_block);
+
+        if (merge_block->hasNPredecessors(0)) {
+            merge_block->eraseFromParent();
+        }
+        else {
+            builder_->SetInsertPoint(merge_block);
+        }
         return {};
     }
     if (auto while_statement = is<WhileNode>(get)) {
@@ -194,21 +312,21 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
 
         builder_->CreateBr(cond_block);
         builder_->SetInsertPoint(cond_block);
-        auto condition = GenerateRValue(while_statement->condition.get());
+        auto condition = GenerateRValue(while_statement->condition.get(), &BOOLEAN);
         builder_->CreateCondBr(condition.first, loop_block, merge_block);
 
         builder_->SetInsertPoint(loop_block);
-        auto result = GenerateRValue(while_statement->body.get());
+        auto result = GenerateRValue(while_statement->body.get(), nullptr);
         builder_->CreateBr(cond_block);
 
         builder_->SetInsertPoint(merge_block);
         return {};
     }
     if (const auto integer = is<IntegerNode>(get)) {
-        return std::pair(ConstantInt::get(*context_, APInt(64, integer->value, false)), std::make_unique<TypeNode>(TypeNodeType::I64));
+        return Cast(std::pair(ConstantInt::get(*context_, APInt(64, integer->value, false)), std::make_unique<TypeNode>(TypeNodeType::I64)), expected);
     }
     if (const auto floating = is<FloatNode>(get)) {
-        return std::pair(ConstantFP::get(*context_, APFloat(floating->value)), std::make_unique<TypeNode>(TypeNodeType::F64));
+        return Cast(std::pair(ConstantFP::get(*context_, APFloat(floating->value)), std::make_unique<TypeNode>(TypeNodeType::F64)), expected);
     }
     if (const auto literal = is<LiteralNode>(get)) {
         switch (literal->type) {
@@ -228,16 +346,20 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
     if (const auto assign = is<AssignNode>(get)) {
         auto target = GenerateLValue(assign->target.get());
         target = Drill(std::move(target));
-        auto value = GenerateRValue(assign->value.get());
+        auto value = GenerateRValue(assign->value.get(), target.second.get());
         builder_->CreateStore(value.first, target.first);
         return value;
     }
     if (const auto binary = is<BinaryNode>(get)) {
-        auto left = GenerateRValue(binary->left.get());
-        auto right = GenerateRValue(binary->right.get());
+        auto left = GenerateRValue(binary->left.get(), nullptr);
+        auto right = GenerateRValue(binary->right.get(), nullptr);
         if (left.first->getType()->isFloatTy() || right.first->getType()->isFloatTy()) {
             throw std::runtime_error("Floats are not supported");
         }
+
+        auto promotion = Promote(left, right);
+        left = Cast(std::move(left), promotion.get());
+        right = Cast(std::move(right), promotion.get());
 
         bool is_signed = left.second->Signed() || right.second->Signed();
         // integer math
@@ -292,25 +414,26 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
         }
     }
     if (const auto unary = is<UnaryNode>(get)) {
-        auto x = GenerateRValue(unary->operand.get());
-        if (x.first->getType()->isFloatTy()) {
-            throw std::runtime_error("Floats are not supported");
-        }
+        auto x = GenerateRValue(unary->operand.get(), nullptr);
 
         switch (unary->type) {
             case UnaryNodeType::NEGATE:
-                return std::pair(builder_->CreateNeg(x.first, "negtmp"), std::make_unique<TypeNode>(TypeNodeType::I64));
+                if (x.second->Float()) {
+                    return std::pair(builder_->CreateFNeg(x.first, "fnegtmp"), UniqueCast<TypeNode>(x.second->Clone()));
+                }
+                return std::pair(builder_->CreateNeg(x.first, "negtmp"), UniqueCast<TypeNode>(x.second->Clone()));
             case UnaryNodeType::NOT:
-                return std::pair(builder_->CreateNot(x.first, "nottmp"), std::make_unique<TypeNode>(TypeNodeType::I64));
+                x = Cast(std::move(x), &BOOLEAN);
+                return std::pair(builder_->CreateNot(x.first, "nottmp"), std::make_unique<TypeNode>(TypeNodeType::BOOL));
             default:
                 throw std::runtime_error("Unsupported unary expression type");
         }
     }
     if (const auto cast = is<CastNode>(get)) {
         if (cast->type == CastNodeType::STATIC) {
-            return Cast(GenerateRValue(cast->expression.get()), cast->target.get());
+            return Cast(GenerateRValue(cast->expression.get(), nullptr), cast->target.get());
         }
-        auto x = GenerateRValue(cast->expression.get());
+        auto x = GenerateRValue(cast->expression.get(), nullptr);
         auto type = GenerateType(cast->target.get());
         return {builder_->CreateBitCast(x.first, type), UniqueCast<TypeNode>(cast->target->Clone())};
     }
@@ -350,18 +473,48 @@ void LLVMBackend::GenerateFunction(FunctionNode *function) {
 
     func = Function::Create(function_type, GlobalValue::ExternalLinkage, function->name, module_.get());
 
+    auto block = BasicBlock::Create(*context_, "entry", func);
+    builder_->SetInsertPoint(block);
+
+    if (function->return_type->type != TypeNodeType::VOID) {
+        ret = builder_->CreateAlloca(return_type, nullptr, "return.addr");
+        builder_->CreateStore(ConstantAggregateZero::get(return_type), ret);
+    }
+
     scope_.PushScope();
     unsigned idx = 0;
     for (auto &arg: func->args()) {
         arg.setName(names[idx]);
-        scope_.Declare(names[idx], &arg, std::move(types[idx]));
+        auto *arg_slot = builder_->CreateAlloca(arg.getType(), nullptr, names[idx] + ".addr");
+        builder_->CreateStore(&arg, arg_slot);
+        scope_.Declare(names[idx], arg_slot, std::move(types[idx]));
         idx++;
     }
 
-    auto block = BasicBlock::Create(*context_, "entry", func);
-    builder_->SetInsertPoint(block);
+    exit = BasicBlock::Create(*context_, "exit");
 
-    GenerateRValue(function->body.get());
+    GenerateRValue(function->body.get(), function->return_type.get());
+
+    if (!builder_->GetInsertBlock()->getTerminator())
+        builder_->CreateBr(exit);
+
+    exit->insertInto(func);
+
+    builder_->SetInsertPoint(exit);
+
+    if (function->return_type->type != TypeNodeType::VOID) {
+        auto load = builder_->CreateLoad(return_type, ret);
+        builder_->CreateRet(load);
+    }
+    else {
+        builder_->CreateRetVoid();
+    }
+
+    func->print(llvm::outs());
+
+    if (verifyFunction(*func, &llvm::errs())) {
+        throw std::runtime_error("Function verification failed: " + function->name);
+    }
 
     func = nullptr;
 

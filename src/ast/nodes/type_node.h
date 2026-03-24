@@ -48,6 +48,8 @@ public:
     bool Pointer() const;
     size_t Size() const;
 
+    bool Equal(const TypeNode* other) const;
+
     TypeNodeType type;
     std::unique_ptr<TypeNode> subtype;
     std::unique_ptr<ExpressionNode> capacity;
