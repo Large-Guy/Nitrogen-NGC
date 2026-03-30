@@ -30,6 +30,7 @@ int main() {
     backend.Generate(std::move(nodes));
 
     system("gcc output.o -o output");
+    system("./output || echo \"Program finished with exit code\" $?");
 
     return 0;
 }

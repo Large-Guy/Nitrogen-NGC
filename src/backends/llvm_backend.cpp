@@ -355,7 +355,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
     }
     if (const auto integer = is<IntegerNode>(get)) {
         Value* val = nullptr;
-        if (expected->Integer()) {
+        if (expected != nullptr && expected->Integer()) {
             switch (expected->type) {
                 case TypeNodeType::I8:
                     val = ConstantInt::get(*context_, APInt(8, integer->value));
@@ -372,6 +372,10 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
                 default:
                     throw std::runtime_error("Unsupported integer type");
             }
+        } else {
+            auto value = std::make_pair(ConstantInt::get(*context_, APInt(64, integer->value)),
+                                        std::make_unique<TypeNode>(TypeNodeType::I64));
+            return Cast(std::move(value), expected);
         }
         return {val, UniqueCast<TypeNode>(expected->Clone())};
     }
