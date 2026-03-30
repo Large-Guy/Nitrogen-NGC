@@ -257,7 +257,7 @@ std::pair<Value *, std::unique_ptr<TypeNode>> LLVMBackend::GenerateRValue(AstNod
     if (auto variable = is<VariableNode>(get)) {
         auto* type = GenerateType(variable->type.get());
         auto* var = builder_->CreateAlloca(type, nullptr, variable->name);
-        builder_->CreateStore(variable->value ? GenerateRValue(variable->value.get(), variable->type.get()).first : ConstantAggregateZero::get(type), var);
+        builder_->CreateStore(variable->value ? GenerateRValue(variable->value.get(), variable->type.get()).first : Constant::getNullValue(type), var);
         scope_.Declare(variable->name, var, UniqueCast<TypeNode>(variable->type->Clone()));
         return std::pair(var, UniqueCast<TypeNode>(variable->type->Clone()));
     }
@@ -478,7 +478,7 @@ void LLVMBackend::GenerateFunction(FunctionNode *function) {
 
     if (function->return_type->type != TypeNodeType::VOID) {
         ret = builder_->CreateAlloca(return_type, nullptr, "return.addr");
-        builder_->CreateStore(ConstantAggregateZero::get(return_type), ret);
+        builder_->CreateStore(Constant::getNullValue(return_type), ret);
     }
 
     scope_.PushScope();
