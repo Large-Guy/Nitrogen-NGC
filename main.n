@@ -34,8 +34,20 @@ f32 sin(f32 x)
     return res;
 }
 
+void scale(f32& x, f32& y, f32 scalar)
+{
+    x *= scalar;
+    y *= scalar;
+}
+
 i32 main()
 {
-    let y = sin(1f);
-    return y;
+    f32* x = [3f];
+    f32 y = 4f;
+    
+    f32& borrow = x;
+    
+    scale(borrow, &y, 3f);
+    
+    return x as i32;
 }

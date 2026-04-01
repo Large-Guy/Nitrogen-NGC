@@ -53,7 +53,7 @@ public:
 
     size_t Size() const;
 
-    bool Equal(const TypeNode* other) const;
+    bool Equal(const TypeNode* other, bool borrowConversion) const;
 
     TypeNodeType type;
     std::unique_ptr<TypeNode> subtype;

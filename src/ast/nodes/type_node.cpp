@@ -83,12 +83,19 @@ size_t TypeNode::Size() const {
     return 0;
 }
 
-bool TypeNode::Equal(const TypeNode* other) const {
+bool TypeNode::Equal(const TypeNode* other, bool borrowConversion) const {
     if (other == nullptr || type != other->type) {
-        return false;
+        if (!borrowConversion) {
+            return false;
+        }
+        if (type != TypeNodeType::BORROW && type != TypeNodeType::OWNER || other->type != TypeNodeType::BORROW && other
+            ->type !=
+            TypeNodeType::OWNER) {
+            return false;
+        }
     }
     if (subtype == nullptr || other->subtype == nullptr) {
         return subtype == nullptr && other->subtype == nullptr;
     }
-    return subtype->Equal(other->subtype.get()); // TODO: handle capacity
+    return subtype->Equal(other->subtype.get(), borrowConversion); // TODO: handle capacity
 }

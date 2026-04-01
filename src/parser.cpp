@@ -174,11 +174,12 @@ public:
     }
 
     static std::unique_ptr<ExpressionNode> Cast(Parser& parser, std::unique_ptr<ExpressionNode> left, bool canAssign) {
+        bool reinterpret = parser.Match(TokenType::BANG);
         parser.Advance();
+
         auto type = parser.BuildType(parser.NodeFromType(parser.previous_));
 
-        std::unique_ptr<AstNode> cast;
-        if (parser.Match(TokenType::BANG)) {
+        if (reinterpret) {
             return std::make_unique<CastNode>(CastNodeType::REINTERPRET, std::move(type), std::move(left));
         }
         return std::make_unique<CastNode>(CastNodeType::STATIC, std::move(type), std::move(left));

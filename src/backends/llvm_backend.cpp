@@ -176,7 +176,7 @@ Type* LLVMBackend::GenerateType(const TypeNode* type) {
 
 std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Drill(std::pair<Value*, std::unique_ptr<TypeNode> > value,
                                                                  const TypeNode* expected) {
-    if (expected != nullptr && value.second->Equal(expected)) {
+    if (expected != nullptr && value.second->Equal(expected, true)) {
         return value;
     }
     if (value.second != nullptr && (value.second->type == TypeNodeType::BORROW || value.second->type ==
@@ -190,9 +190,9 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Drill(std::pair<Value
 
 std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Cast(std::pair<Value*, std::unique_ptr<TypeNode> > value,
                                                                 const TypeNode* type) {
-    if (type == nullptr || value.second->Equal(type)) {
+    if (type == nullptr || value.second->Equal(type, true)) {
         // null type implies no cast
-        return value;
+        return {value.first, UniqueCast<TypeNode>(type->Clone())};
     }
     auto llvm_type = GenerateType(type);
     auto unique_type = UniqueCast<TypeNode>(type->Clone());
@@ -233,7 +233,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Cast(std::pair<Value*
         if (value.second->type == TypeNodeType::BORROW && type->type == TypeNodeType::OWNER) {
             throw std::runtime_error("Cannot cast borrow to owner");
         }
-        if (value.second->subtype->Equal(type->subtype.get())) {
+        if (value.second->subtype->Equal(type->subtype.get(), true)) {
             return {value.first, UniqueCast<TypeNode>(type->Clone())};
         }
     }
@@ -279,6 +279,10 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         }
         scope_.PopScope();
         if (last.first == nullptr)
+            return {};
+        if (expected == nullptr)
+            return last;
+        if (expected->type == TypeNodeType::VOID)
             return {};
         return Cast(std::move(last), expected);
     }
