@@ -5,6 +5,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 
+#include "../ast/nodes/variable_node.h"
 #include "shared/Scope.h"
 
 using namespace llvm;
@@ -33,6 +34,8 @@ public:
     void GeneratePrototype(FunctionNode* function);
 
     void GenerateFunction(FunctionNode* function);
+
+    void GenerateVariable(VariableNode* variable);
 
 private:
     std::unique_ptr<LLVMContext> context_;

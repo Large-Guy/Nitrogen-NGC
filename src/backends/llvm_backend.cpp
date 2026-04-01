@@ -68,6 +68,8 @@ void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
             for (const auto& statement: module->statements) {
                 if (const auto function = is<FunctionNode>(statement.get())) {
                     GeneratePrototype(function);
+                } else if (const auto variable = is<VariableNode>(statement.get())) {
+                    GenerateVariable(variable);
                 }
             }
 
@@ -434,7 +436,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         while (type_target->subtype->Pointer())
             type_target = type_target->subtype.get();
         target = Drill(std::move(target), type_target);
-        auto value = GenerateRValue(assign->value.get(), type_target);
+        auto value = GenerateRValue(assign->value.get(), target.second->subtype.get());
         builder_->CreateStore(value.first, target.first);
         return value;
     }
@@ -749,4 +751,13 @@ void LLVMBackend::GenerateFunction(FunctionNode* function) {
     scope_.PopScope();
 
     exit = nullptr;
+}
+
+void LLVMBackend::GenerateVariable(VariableNode* variable) {
+    auto var = module_->getOrInsertGlobal(variable->name, GenerateType(variable->type.get()));
+    auto gvar = llvm::cast<GlobalVariable>(var);
+    gvar->setInitializer(Constant::getNullValue(GenerateType(variable->type.get())));
+    auto ptr = std::make_unique<TypeNode>(TypeNodeType::OWNER, UniqueCast<TypeNode>(variable->type->Clone()));
+
+    scope_.Declare(variable->name, gvar, std::move(ptr));
 }
