@@ -12,15 +12,15 @@ public:
 
     virtual void Generate(std::vector<std::unique_ptr<AstNode> > nodes) = 0;
 
+    static int64_t EvaluateInt(ExpressionNode* unique);
+
+    static size_t EvaluateSize(const TypeNode* type_node);
+
 protected:
     template<typename T, typename U>
     static constexpr T* is(U* object) {
         return dynamic_cast<T*>(object);
     }
-
-    int64_t EvaluateInt(ExpressionNode* unique) const;
-
-    size_t EvaluateSize(const TypeNode* type_node) const;
 };
 
 

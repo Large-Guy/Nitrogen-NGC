@@ -233,6 +233,68 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Cast(std::pair<Value*
     auto llvm_type = GenerateType(type);
     auto unique_type = UniqueCast<TypeNode>(type->Clone());
 
+    if (value.second->type == TypeNodeType::SIMD && type->type == TypeNodeType::SIMD) {
+        auto val_cap = EvaluateInt(value.second->capacity.get());
+        auto res_cap = EvaluateInt(type->capacity.get());
+
+        //Convert element type
+        auto val_elem_type = value.second->subtype[0].get();
+        auto res_elem_type = type->subtype[0].get();
+
+        std::vector<int> shuffle;
+        shuffle.reserve(res_cap);
+        for (auto i = 0; i < res_cap; i++) {
+            shuffle.push_back(i < val_cap ? i : val_cap + (i - val_cap));
+        }
+
+        //build vector
+        auto val = builder_->CreateShuffleVector(value.first,
+                                                 Constant::getNullValue(GenerateType(value.second.get())),
+                                                 shuffle);
+
+
+        if (val_elem_type->Integer() && res_elem_type->Integer()) {
+            bool narrowing = EvaluateSize(val_elem_type) > EvaluateSize(res_elem_type);
+            if (narrowing) {
+                return {builder_->CreateTrunc(val, llvm_type), std::move(unique_type)};
+            }
+            if (val_elem_type->Signed()) {
+                return {builder_->CreateSExt(val, llvm_type), std::move(unique_type)};
+            }
+            return {builder_->CreateZExt(val, llvm_type), std::move(unique_type)};
+        }
+
+        if (val_elem_type->Float() && res_elem_type->Float()) {
+            return {builder_->CreateFPCast(val, llvm_type), std::move(unique_type)};
+        }
+
+        if (val_elem_type->Integer() && res_elem_type->Float()) {
+            if (val_elem_type->Signed()) {
+                return {builder_->CreateSIToFP(val, llvm_type), std::move(unique_type)};
+            }
+            return {builder_->CreateUIToFP(val, llvm_type), std::move(unique_type)};
+        }
+        if (val_elem_type->Float() && res_elem_type->Integer()) {
+            if (val_elem_type->Signed()) {
+                return {builder_->CreateFPToSI(val, llvm_type), std::move(unique_type)};
+            }
+            return {builder_->CreateFPToUI(val, llvm_type), std::move(unique_type)};
+        }
+
+        if (val_elem_type->Pointer() && res_elem_type->Boolean()) {
+            return {builder_->CreateIsNotNull(val), std::move(unique_type)};
+        }
+
+        if (val_elem_type->Pointer() && res_elem_type->Pointer()) {
+            if (val_elem_type->type == TypeNodeType::BORROW && res_elem_type->type == TypeNodeType::OWNER) {
+                throw std::runtime_error("Cannot cast borrow to owner");
+            }
+            if (val_elem_type->subtype[0]->Equal(res_elem_type->subtype[0].get(), true)) {
+                return {val, UniqueCast<TypeNode>(type->Clone())};
+            }
+        }
+    }
+
     if (value.second->Integer() && type->Integer()) {
         bool narrowing = EvaluateSize(value.second.get()) > EvaluateSize(type);
         if (narrowing) {
@@ -277,30 +339,41 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::Cast(std::pair<Value*
     throw std::runtime_error("Invalid cast");
 }
 
-std::unique_ptr<TypeNode> LLVMBackend::Promote(std::pair<Value*, std::unique_ptr<TypeNode> >& a,
-                                               std::pair<Value*, std::unique_ptr<TypeNode> >& b) {
-    if (a.second->Integer() && b.second->Integer()) {
+std::unique_ptr<TypeNode> LLVMBackend::Promote(TypeNode* a,
+                                               TypeNode* b) {
+    if (a->Equal(b, true))
+        return UniqueCast<TypeNode>(a->Clone());
+    if (a->Integer() && b->Integer()) {
         //promote to larger type
-        if (EvaluateSize(a.second.get()) > EvaluateSize(b.second.get())) {
-            return UniqueCast<TypeNode>(a.second->Clone());
+        if (EvaluateSize(a) > EvaluateSize(b)) {
+            return UniqueCast<TypeNode>(a->Clone());
         }
-        return UniqueCast<TypeNode>(b.second->Clone());
+        return UniqueCast<TypeNode>(b->Clone());
     }
-    if (a.second->Float() && b.second->Float()) {
+    if (a->Float() && b->Float()) {
         //promote to larger type
-        if (EvaluateSize(a.second.get()) > EvaluateSize(b.second.get())) {
-            return UniqueCast<TypeNode>(a.second->Clone());
+        if (EvaluateSize(a) > EvaluateSize(b)) {
+            return UniqueCast<TypeNode>(a->Clone());
         }
-        return UniqueCast<TypeNode>(b.second->Clone());
+        return UniqueCast<TypeNode>(b->Clone());
     }
-    if (a.second->Float() && b.second->Integer()) {
-        return UniqueCast<TypeNode>(a.second->Clone()); // promote to float
+    if (a->Float() && b->Integer()) {
+        return UniqueCast<TypeNode>(a->Clone()); // promote to float
     }
-    if (b.second->Float() && a.second->Integer()) {
-        return UniqueCast<TypeNode>(b.second->Clone()); // promote to float
+    if (b->Float() && a->Integer()) {
+        return UniqueCast<TypeNode>(b->Clone()); // promote to float
+    }
+    if (a->type == TypeNodeType::SIMD && b->type == TypeNodeType::SIMD) {
+        auto a_size = EvaluateInt(a->capacity.get());
+        auto b_size = EvaluateInt(b->capacity.get());
+        //Grow
+        auto final_size = std::max(a_size, b_size);
+        return std::make_unique<TypeNode>(TypeNodeType::SIMD,
+                                          Promote(a->subtype[0].get(), b->subtype[0].get()),
+                                          std::make_unique<IntegerNode>(final_size));
     }
     std::cerr << "Unhandled promotion rule, could be possible source of bug" << std::endl;
-    return UniqueCast<TypeNode>(a.second->Clone());
+    return UniqueCast<TypeNode>(a->Clone());
 }
 
 std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNode* get, const TypeNode* expected) {
@@ -326,7 +399,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         if (variable->type == nullptr) {
             //inferred
             if (variable->value == nullptr)
-                throw std::runtime_error("Inferred variable value is null");
+                throw std::runtime_error("Unable to infer variable type");
             auto val = GenerateRValue(variable->value.get(), nullptr);
 
             auto* type = GenerateType(val.second.get());
@@ -340,7 +413,8 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         auto* type = GenerateType(variable->type.get());
         auto* var = builder_->CreateAlloca(type, nullptr, variable->name);
         builder_->CreateStore(variable->value
-                                  ? GenerateRValue(variable->value.get(), variable->type.get()).first
+                                  ? Cast(GenerateRValue(variable->value.get(), variable->type.get()),
+                                         variable->type.get()).first
                                   : Constant::getNullValue(type), var);
         auto ptr_type = std::make_unique<TypeNode>(TypeNodeType::OWNER, UniqueCast<TypeNode>(variable->type->Clone()));
         scope_.Declare(variable->name, var, UniqueCast<TypeNode>(ptr_type->Clone()));
@@ -484,7 +558,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
             //load
             auto load = builder_->CreateLoad(type, arr);
 
-            return {load, std::move(simd_node)};
+            return std::pair{load, std::move(simd_node)};
         }
 
         std::vector<Value*> values;
@@ -520,7 +594,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
             //load
             auto load = builder_->CreateLoad(type, arr);
 
-            return {load, std::move(simd_node)};
+            return std::pair{load, std::move(simd_node)};
         }
         auto tuple_node = std::make_unique<TypeNode>(TypeNodeType::TUPLE, std::move(types));
         auto type = GenerateType(tuple_node.get());
@@ -535,7 +609,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         //load
         auto load = builder_->CreateLoad(type, arr);
 
-        return {load, std::move(tuple_node)};
+        return std::pair{load, std::move(tuple_node)};
     }
     if (const auto literal = is<LiteralNode>(get)) {
         switch (literal->type) {
@@ -569,8 +643,17 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
     if (const auto binary = is<BinaryNode>(get)) {
         auto left = GenerateRValue(binary->left.get(), nullptr);
         auto right = GenerateRValue(binary->right.get(), nullptr);
-        if (left.second->Float() || right.second->Float()) {
-            auto promotion = Promote(left, right);
+        auto left_comp_type = left.second.get();
+        auto right_comp_type = left.second.get();
+        if (left.second->type == TypeNodeType::SIMD) {
+            if (right.second->type != TypeNodeType::SIMD) {
+                throw std::runtime_error("Scalar to vector promotion not implemented");
+            }
+            left_comp_type = left.second->subtype[0].get();
+            right_comp_type = right.second->subtype[0].get();
+        }
+        if (left_comp_type->Float() || right_comp_type->Float()) {
+            auto promotion = Promote(left.second.get(), right.second.get());
             left = Cast(std::move(left), promotion.get());
             right = Cast(std::move(right), promotion.get());
 
@@ -636,11 +719,11 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
             }
         }
 
-        auto promotion = Promote(left, right);
+        auto promotion = Promote(left.second.get(), right.second.get());
         left = Cast(std::move(left), promotion.get());
         right = Cast(std::move(right), promotion.get());
 
-        bool is_signed = left.second->Signed() || right.second->Signed();
+        bool is_signed = left_comp_type->Signed() || right_comp_type->Signed();
         // integer math
         switch (binary->type) {
             case BinaryNodeType::ADD:

@@ -6,7 +6,7 @@
 #include "ast/nodes/float_node.h"
 #include "ast/nodes/integer_node.h"
 
-int64_t Backend::EvaluateInt(ExpressionNode* unique) const {
+int64_t Backend::EvaluateInt(ExpressionNode* unique) {
     if (auto integer = is<IntegerNode>(unique)) {
         return integer->value;
     }
@@ -61,7 +61,7 @@ int64_t Backend::EvaluateInt(ExpressionNode* unique) const {
 }
 
 
-size_t Backend::EvaluateSize(const TypeNode* type_node) const {
+size_t Backend::EvaluateSize(const TypeNode* type_node) {
     switch (type_node->type) {
         case TypeNodeType::BOOL:
             return 1;

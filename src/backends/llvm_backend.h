@@ -27,8 +27,8 @@ public:
     std::pair<Value*, std::unique_ptr<TypeNode> > Cast(std::pair<Value*, std::unique_ptr<TypeNode> > value,
                                                        const TypeNode* type);
 
-    std::unique_ptr<TypeNode> Promote(std::pair<Value*, std::unique_ptr<TypeNode> >& a,
-                                      std::pair<Value*, std::unique_ptr<TypeNode> >& b);
+    std::unique_ptr<TypeNode> Promote(TypeNode* a,
+                                      TypeNode* b);
 
 
     std::pair<Value*, std::unique_ptr<TypeNode> > GenerateRValue(AstNode* get, const TypeNode* expected);

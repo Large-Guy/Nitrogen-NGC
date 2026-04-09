@@ -1,5 +1,6 @@
 #include "type_node.h"
 #include "../../memory_utils.h"
+#include "backends/backend.h"
 
 TypeNode::TypeNode(TypeNodeType type, std::unique_ptr<TypeNode> subtype,
                    std::unique_ptr<ExpressionNode> capacity) : type(type), subtype(),
@@ -8,8 +9,9 @@ TypeNode::TypeNode(TypeNodeType type, std::unique_ptr<TypeNode> subtype,
         this->subtype.push_back(std::move(subtype));
 }
 
-TypeNode::TypeNode(TypeNodeType type, std::vector<std::unique_ptr<TypeNode>> subtype,
-    std::unique_ptr<ExpressionNode> capacity) : type(type), subtype(std::move(subtype)), capacity(std::move(capacity)) {
+TypeNode::TypeNode(TypeNodeType type, std::vector<std::unique_ptr<TypeNode> > subtype,
+                   std::unique_ptr<ExpressionNode> capacity) : type(type), subtype(std::move(subtype)),
+                                                               capacity(std::move(capacity)) {
 }
 
 std::unique_ptr<AstNode> TypeNode::Clone() const {
@@ -54,7 +56,7 @@ bool TypeNode::Equal(const TypeNode* other, bool borrowConversion) const {
         }
     }
     if (subtype.empty() || other->subtype.empty()) {
-        return subtype.empty()  && other->subtype.empty();
+        return subtype.empty() && other->subtype.empty();
     }
     if (subtype.size() != other->subtype.size())
         return false;
@@ -62,9 +64,13 @@ bool TypeNode::Equal(const TypeNode* other, bool borrowConversion) const {
         if (!subtype[i]->Equal(other->subtype[i].get(), borrowConversion))
             return false;
     }
+    if (Backend::EvaluateInt(capacity.get()) != Backend::EvaluateInt(other->capacity.get())) {
+        return false;
+    }
     return true; // TODO: handle capacity
 }
 
 bool TypeNode::Indexable() const {
-    return type == TypeNodeType::ARRAY || type == TypeNodeType::MAP || type == TypeNodeType::TUPLE || type == TypeNodeType::SIMD;
+    return type == TypeNodeType::ARRAY || type == TypeNodeType::MAP || type == TypeNodeType::TUPLE || type ==
+           TypeNodeType::SIMD;
 }

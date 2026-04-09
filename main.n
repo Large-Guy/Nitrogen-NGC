@@ -2,9 +2,7 @@ module program;
 
 i32 main()
 {
-    let a = (1, 2, 3);
-    let b = (4, 5, 6);
-    let c = (a.x * b.x, a.y * b.y, a.z * b.z);
-    let dot_product = c.x + c.y + c.z;
-    return dot_product;
+    f32<3> a = (1,2,3);
+    f32<3> b = a * (2,2,2);
+    return b[2] as i32;
 }
