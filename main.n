@@ -1,19 +1,18 @@
 module program;
 
-struct Chunk
+struct Car
 {
-    i32<2> position;
-    i16<16 * 16> tiles;
-}
-
-Chunk newChunk()
-{
-    Chunk chunk;
-    return chunk;
+    i32 year;
+    
+    f32 speed;
+    f32<2> position;
 }
 
 i32 main()
 {
-    Chunk* chunk = [newChunk()];
-    return 0;
+    Car car;
+    car.year = 2026;
+    car.speed = 60;
+    car.position += (car.speed, car.speed);
+    return car.year;
 }

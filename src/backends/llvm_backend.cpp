@@ -995,7 +995,19 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateLValue(AstNod
 
             return {load, std::move(alloc_type)};
         }
-        throw std::runtime_error("Field access not supported yet");
+        
+        // field access
+        
+        //load
+        auto load_type = location.second->subtype[0].get();
+        int index = load_type->GetFieldIndex(field->name);
+        if (index != -1) {
+            auto gep = builder_->CreateGEP(GenerateType(load_type), location.first, {builder_->getInt32(0), builder_->getInt32(index)});
+            auto elem_type = load_type->subtype[index].get();
+            return {gep, std::make_unique<TypeNode>(TypeNodeType::BORROW, UniqueCast<TypeNode>(elem_type->Clone()))};
+        }
+        
+        throw std::runtime_error("Field " + field->name + " does not exist");
     }
     throw std::runtime_error("Unsupported expression type");
 }

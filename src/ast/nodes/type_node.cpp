@@ -1,27 +1,48 @@
 #include "type_node.h"
+
+#include <utility>
 #include "../../memory_utils.h"
 #include "backends/backend.h"
 
 TypeNode::TypeNode(TypeNodeType type, std::unique_ptr<TypeNode> subtype,
-                   std::unique_ptr<ExpressionNode> capacity) : type(type), subtype(),
-                                                               capacity(std::move(capacity)) {
+                   std::unique_ptr<ExpressionNode> capacity, std::string name) : type(type), subtype(),
+                                                               capacity(std::move(capacity)), name(std::move(name)) {
     if (subtype != nullptr)
         this->subtype.push_back(std::move(subtype));
 }
 
 TypeNode::TypeNode(TypeNodeType type, std::vector<std::unique_ptr<TypeNode> > subtype,
-                   std::unique_ptr<ExpressionNode> capacity) : type(type), subtype(std::move(subtype)),
-                                                               capacity(std::move(capacity)) {
+                   std::unique_ptr<ExpressionNode> capacity, std::string name) : type(type), subtype(std::move(subtype)),
+                                                               capacity(std::move(capacity)), name(std::move(name)) {
 }
 
 std::unique_ptr<AstNode> TypeNode::Clone() const {
     std::vector<std::unique_ptr<TypeNode> > types;
 
+    types.reserve(subtype.size());
     for (auto& s: subtype) {
         types.push_back(UniqueCast<TypeNode>(s->Clone()));
     }
     return std::make_unique<TypeNode>(type, std::move(types),
-                                      capacity ? UniqueCast<ExpressionNode>(capacity->Clone()) : nullptr);
+                                      capacity ? UniqueCast<ExpressionNode>(capacity->Clone()) : nullptr, name);
+}
+
+bool TypeNode::HasField(const std::string& name) const {
+    for (auto& s: subtype) {
+        if (s->name == name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int TypeNode::GetFieldIndex(const std::string& name) const {
+    for (auto i = 0; i < subtype.size(); i++) {
+        if (subtype[i]->name == name) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 bool TypeNode::Integer() const {

@@ -39,27 +39,32 @@ enum class TypeNodeType {
 class TypeNode : public AstNode {
 public:
     TypeNode(TypeNodeType type, std::unique_ptr<TypeNode> subtype = nullptr,
-             std::unique_ptr<ExpressionNode> capacity = nullptr);
+             std::unique_ptr<ExpressionNode> capacity = nullptr, std::string name = "");
 
     TypeNode(TypeNodeType type, std::vector<std::unique_ptr<TypeNode>> subtype,
-        std::unique_ptr<ExpressionNode> capacity = nullptr);
+        std::unique_ptr<ExpressionNode> capacity = nullptr, std::string name = "");
 
-    std::unique_ptr<AstNode> Clone() const override;
+    [[nodiscard]] std::unique_ptr<AstNode> Clone() const override;
 
-    bool Integer() const;
+    [[nodiscard]] bool HasField(const std::string& name) const;
+    
+    [[nodiscard]] int GetFieldIndex(const std::string& name) const;
 
-    bool Float() const;
+    [[nodiscard]] bool Integer() const;
 
-    bool Signed() const;
+    [[nodiscard]] bool Float() const;
 
-    bool Boolean() const;
+    [[nodiscard]] bool Signed() const;
 
-    bool Pointer() const;
+    [[nodiscard]] bool Boolean() const;
+
+    [[nodiscard]] bool Pointer() const;
 
     bool Equal(const TypeNode* other, bool borrowConversion) const;
 
-    bool Indexable() const;
+    [[nodiscard]] bool Indexable() const;
 
+    std::string name;
     TypeNodeType type;
     std::vector<std::unique_ptr<TypeNode>> subtype;
     std::unique_ptr<ExpressionNode> capacity;

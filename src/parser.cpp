@@ -745,6 +745,8 @@ std::unique_ptr<DefinitionNode> Parser::Declaration() {
 
     Consume(TokenType::IDENTIFIER, "Expected name after definition");
     auto name = previous_.value;
+    
+    type_node->name = name;
 
     if (Match(TokenType::LEFT_PAREN)) {
         std::vector<std::unique_ptr<DefinitionNode> > args;
