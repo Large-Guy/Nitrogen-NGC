@@ -2,7 +2,6 @@ module program;
 
 i32 main()
 {
-    i32<4,4> matrix;
-    matrix[0,1] = 4;
-    return matrix[0,1];
+    i32<4,4> tensor; // tensor math
+    i32<4><4> array_of_arrays; // element wise multiplication
 }

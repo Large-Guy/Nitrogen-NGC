@@ -590,7 +590,7 @@ std::unique_ptr<TypeNode> Parser::BuildType(std::unique_ptr<TypeNode> base, Type
         
         //tuple dimensions
         auto tuple_size = std::make_unique<TupleNode>(std::move(sizes));
-        auto matrix = std::make_unique<TypeNode>(TypeNodeType::MATRIX, std::move(base), std::move(tuple_size));
+        auto matrix = std::make_unique<TypeNode>(TypeNodeType::TENSOR, std::move(base), std::move(tuple_size));
         return matrix;
     }
     if (Match(TokenType::STAR)) {

@@ -99,5 +99,5 @@ bool TypeNode::Equal(const TypeNode* other, bool borrowConversion) const {
 
 bool TypeNode::Indexable() const {
     return type == TypeNodeType::ARRAY || type == TypeNodeType::MAP || type == TypeNodeType::TUPLE || type ==
-           TypeNodeType::SIMD || type == TypeNodeType::MATRIX;
+           TypeNodeType::SIMD || type == TypeNodeType::TENSOR;
 }

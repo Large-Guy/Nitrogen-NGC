@@ -172,7 +172,7 @@ Type* LLVMBackend::GenerateType(const TypeNode* type, const std::string& name) {
             throw std::runtime_error("Map types are not supported");
         case TypeNodeType::SIMD:
             return FixedVectorType::get(GenerateType(type->subtype[0].get()), EvaluateInt(type->capacity.get()));
-        case TypeNodeType::MATRIX: {
+        case TypeNodeType::TENSOR: {
             //Expect capacity to be a tuple
             auto tuple = dynamic_cast<TupleNode*>(type->capacity.get());
             if (!tuple)
@@ -950,7 +950,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateLValue(AstNod
 
         auto dereference_type = location.second->subtype[0]->subtype[0].get();
         
-        if (location.second->subtype[0]->type == TypeNodeType::MATRIX) {
+        if (location.second->subtype[0]->type == TypeNodeType::TENSOR) {
             std::vector<std::pair<Value*, std::unique_ptr<TypeNode> > > values;
             auto tuple = dynamic_cast<TupleNode*>(index->index.get());
             if (!tuple) {

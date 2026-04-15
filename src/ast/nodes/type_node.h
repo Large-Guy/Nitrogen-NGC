@@ -15,7 +15,7 @@ enum class TypeNodeType {
     ARRAY,
     MAP,
     SIMD,
-    MATRIX,
+    TENSOR,
     TUPLE,
     FUNCTION,
 
