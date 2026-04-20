@@ -82,6 +82,8 @@ add_executable(ngc src/main.cpp
         src/ast/nodes/struct_node.h
         src/type_scope.cpp
         src/type_scope.h
+        src/backends/shared/block.cpp
+        src/backends/shared/block.h
 )
 
 find_package(LLVM 18.1.8 REQUIRED CONFIG)

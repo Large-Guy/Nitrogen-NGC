@@ -9,7 +9,7 @@
 #include "../../ast/nodes/type_node.h"
 
 template <typename Value>
-class Scope {
+class scope {
 public:
     void PushScope() {
         stack.push_back({});

@@ -7,7 +7,7 @@
 
 #include "ast/nodes/struct_node.h"
 #include "ast/nodes/variable_node.h"
-#include "shared/Scope.h"
+#include "shared/scope.h"
 
 using namespace llvm;
 
@@ -48,7 +48,7 @@ private:
     std::unique_ptr<IRBuilder<> > builder_;
     std::unique_ptr<Module> module_;
 
-    Scope<Value> scope_;
+    scope<Value> scope_;
 
     std::unordered_map<Function*, FunctionNode*> signatures;
 
