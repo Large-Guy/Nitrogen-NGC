@@ -1,10 +1,26 @@
 #ifndef NGC_BLOCK_H
 #define NGC_BLOCK_H
+#include <unordered_set>
+#include <llvm/IR/Value.h>
 
 
-
-class Block {
-
+class Block : std::enable_shared_from_this<Block> {
+public:
+    llvm::BasicBlock* block;
+    
+    Block(llvm::LLVMContext* context);
+    
+    bool Valid(llvm::Value* value) const;
+    
+    void Connect(const std::shared_ptr<Block>& successor);
+    
+    void Move(llvm::Value* value);
+    
+private:
+    std::vector<std::weak_ptr<Block>> predecessors;
+    std::vector<std::shared_ptr<Block>> successors;
+    
+    std::unordered_set<llvm::Value*> moved_values;
 };
 
 

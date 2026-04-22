@@ -7,5 +7,5 @@ i32 consume(i32* x) {
 i32 main()
 {
     i32* a = [1];
-    return consume(a);
+    return a;
 }

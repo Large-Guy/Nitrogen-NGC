@@ -87,7 +87,7 @@ void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
         }
     }
 
-    scope_.PopScope();
+    scope_.PopScope(this, builder_.get());
 
     if (!module_) {
         throw std::runtime_error("No module node was provided");
@@ -449,19 +449,32 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
     if (auto compound = is<CompoundStatement>(get)) {
         scope_.PushScope();
         std::pair<Value*, std::unique_ptr<TypeNode> > last = {};
+        
+        bool terminated = false;
         for (const auto& statement: compound->statements) {
             last = GenerateRValue(statement.get(), expected);
 
-            if (builder_->GetInsertBlock()->getTerminator())
+            if (builder_->GetInsertBlock()->getTerminator()) {
+                terminated = true;
                 break;
+            }
         }
-        scope_.PopScope();
-        if (last.first == nullptr)
+        if (terminated) {
+            auto currentBlock = builder_->GetInsertBlock();
+            auto terminator = currentBlock->getTerminator();
+            builder_->SetInsertPoint(terminator);
+        }
+        scope_.PopScope(this, builder_.get());
+        if (last.first == nullptr) {
             return {};
-        if (expected == nullptr)
+        }
+        if (expected == nullptr) {
             return last;
-        if (expected->type == TypeNodeType::VOID)
+        }
+        if (expected->type == TypeNodeType::VOID) {
             return {};
+        }
+        
         return Cast(std::move(last), expected);
     }
     if (auto variable = is<VariableNode>(get)) {
@@ -1325,6 +1338,9 @@ void LLVMBackend::GenerateFunction(FunctionNode* function) {
 
     builder_->SetInsertPoint(exit);
 
+    
+    scope_.PopScope(this, builder_.get());
+    
     if (function->type->type != TypeNodeType::VOID) {
         auto load = builder_->CreateLoad(return_type, ret);
         builder_->CreateRet(load);
@@ -1340,7 +1356,6 @@ void LLVMBackend::GenerateFunction(FunctionNode* function) {
 
     func = nullptr;
 
-    scope_.PopScope();
 
     exit = nullptr;
 }

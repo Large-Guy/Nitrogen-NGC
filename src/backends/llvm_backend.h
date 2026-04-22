@@ -48,7 +48,7 @@ private:
     std::unique_ptr<IRBuilder<> > builder_;
     std::unique_ptr<Module> module_;
 
-    scope<Value> scope_;
+    Scope scope_;
 
     std::unordered_map<Function*, FunctionNode*> signatures;
 

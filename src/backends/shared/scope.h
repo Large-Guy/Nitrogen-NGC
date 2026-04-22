@@ -5,45 +5,29 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Value.h>
+#include <llvm/Support/JSON.h>
 
 #include "../../ast/nodes/type_node.h"
 
-template <typename Value>
-class scope {
+class Scope {
 public:
-    void PushScope() {
-        stack.push_back({});
-    }
-    void PopScope() {
-        stack.pop_back();
-    }
+    void PushScope();
 
-    void Declare(const std::string& name, Value* value, std::unique_ptr<TypeNode> type) {
-        stack.back()[name] = std::pair(value, std::move(type));
-    }
+    void PopScope(struct LLVMBackend* backend, llvm::IRBuilder<>* builder);
 
-    Value* Lookup(const std::string& name) {
-        for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
-            auto found = it->find(name);
-            if (found != it->end()) {
-                return found->second.first;
-            }
-        }
-        return nullptr;
-    }
+    void Declare(const std::string& name, llvm::Value* value, std::unique_ptr<TypeNode> type);
 
-    TypeNode* Type(const std::string& name) {
-        for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
-            auto found = it->find(name);
-            if (found != it->end()) {
-                return found->second.second.get();
-            }
-        }
-        return nullptr;
-    }
+    llvm::Value* Lookup(const std::string& name);
+
+    TypeNode* Type(const std::string& name);
+
 private:
 
-    std::vector<std::unordered_map<std::string, std::pair<Value*, std::unique_ptr<TypeNode>>>> stack;
+    void Free(struct LLVMBackend* backend, llvm::IRBuilder<>* builder, std::pair<llvm::Value*, std::unique_ptr<TypeNode>>& value);
+    
+    std::vector<std::unordered_map<std::string, std::pair<llvm::Value*, std::unique_ptr<TypeNode>>>> stack;
 };
 
 
