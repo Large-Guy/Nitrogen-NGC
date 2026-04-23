@@ -554,21 +554,26 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
         return {};
     }
     if (auto while_statement = is<WhileNode>(get)) {
-        //TODO: convert to Blocks
-        auto cond_block = BasicBlock::Create(*context_, "while.cond", func);
-        auto loop_block = BasicBlock::Create(*context_, "while.loop", func);
-        auto merge_block = BasicBlock::Create(*context_, "while.merge", func);
+        auto cond_block = std::make_shared<Block>(*context_, func, "while.cond");
+        auto loop_block = std::make_shared<Block>(*context_, func, "while.loop");
+        auto merge_block =std::make_shared<Block>(*context_, func, "while.merg");
 
-        builder_->CreateBr(cond_block);
-        builder_->SetInsertPoint(cond_block);
+        builder_->CreateBr(cond_block->basic_block);
+        builder_->SetInsertPoint(cond_block->basic_block);
+        current_block = cond_block.get();
         auto condition = GenerateRValue(while_statement->condition.get(), &BOOLEAN);
-        builder_->CreateCondBr(condition.first, loop_block, merge_block);
+        builder_->CreateCondBr(condition.first, loop_block->basic_block, merge_block->basic_block);
+        cond_block->Connect(loop_block);
+        cond_block->Connect(merge_block);
 
-        builder_->SetInsertPoint(loop_block);
+        builder_->SetInsertPoint(loop_block->basic_block);
+        current_block = loop_block.get();
         auto result = GenerateRValue(while_statement->body.get(), nullptr);
-        builder_->CreateBr(cond_block);
+        builder_->CreateBr(cond_block->basic_block);
+        loop_block->Connect(cond_block);
 
-        builder_->SetInsertPoint(merge_block);
+        builder_->SetInsertPoint(merge_block->basic_block);
+        current_block = merge_block.get();
         return {};
     }
     if (const auto integer = is<IntegerNode>(get)) {

@@ -5,14 +5,17 @@ i32 consume(i32* i)
     return i;
 }
 
-void add_consume(i32* x, i32& b) {
-    b += consume(x);
-}
-
 i32 main(i32 x)
 {
     i32* a = [2];
-    i32 b = x;
-    add_consume(a, &b);
-    return b;
+    i32 result = 0;
+    if(x > 0)
+    {
+        result = consume(a) + 1;
+    }
+    else
+    {
+        return a;
+    }
+    return result;
 }
