@@ -2,8 +2,8 @@
 
 #include <llvm/IR/BasicBlock.h>
 
-Block::Block(llvm::LLVMContext* context) {
-    block = llvm::BasicBlock::Create(*context);
+Block::Block(llvm::LLVMContext& context, llvm::Function* function, const std::string& name) {
+    basic_block = llvm::BasicBlock::Create(context, name, function);
 }
 
 bool Block::Valid(llvm::Value* value) const {
@@ -22,7 +22,7 @@ bool Block::Valid(llvm::Value* value) const {
 
 void Block::Connect(const std::shared_ptr<Block>& successor) {
     successors.push_back(successor);
-    successor->predecessors.push_back(shared_from_this());
+    successor->predecessors.push_back(weak_from_this());
 }
 
 void Block::Move(llvm::Value* value) {

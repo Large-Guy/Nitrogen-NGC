@@ -7,6 +7,7 @@
 
 #include "ast/nodes/struct_node.h"
 #include "ast/nodes/variable_node.h"
+#include "shared/block.h"
 #include "shared/scope.h"
 
 using namespace llvm;
@@ -53,8 +54,9 @@ private:
     std::unordered_map<Function*, FunctionNode*> signatures;
 
     Function* func = nullptr;
-    BasicBlock* exit = nullptr;
+    std::shared_ptr<Block> exit = nullptr;
     Value* ret = nullptr;
+    Block* current_block;
 };
 
 

@@ -7,11 +7,13 @@ void Scope::PushScope() {
     stack.push_back({});
 }
 
-void Scope::PopScope(struct LLVMBackend* backend, llvm::IRBuilder<>* builder) {
+void Scope::PopScope(struct LLVMBackend* backend, llvm::IRBuilder<>* builder, Block* block) {
     auto& top = stack.back();
     
     for (auto& pair : top) {
         auto& val = pair.second;
+        if (!block->Valid(val.first))
+            continue;
         if (val.second->type == TypeNodeType::OWNER) {
             Free(backend, builder, val);
         }

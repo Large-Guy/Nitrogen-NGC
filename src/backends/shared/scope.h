@@ -9,13 +9,14 @@
 #include <llvm/IR/Value.h>
 #include <llvm/Support/JSON.h>
 
+#include "block.h"
 #include "../../ast/nodes/type_node.h"
 
 class Scope {
 public:
     void PushScope();
 
-    void PopScope(struct LLVMBackend* backend, llvm::IRBuilder<>* builder);
+    void PopScope(struct LLVMBackend* backend, llvm::IRBuilder<>* builder, Block* block);
 
     void Declare(const std::string& name, llvm::Value* value, std::unique_ptr<TypeNode> type);
 

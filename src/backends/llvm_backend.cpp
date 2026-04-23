@@ -87,7 +87,7 @@ void LLVMBackend::Generate(std::vector<std::unique_ptr<AstNode> > nodes) {
         }
     }
 
-    scope_.PopScope(this, builder_.get());
+    scope_.PopScope(this, builder_.get(), current_block);
 
     if (!module_) {
         throw std::runtime_error("No module node was provided");
@@ -464,7 +464,7 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
             auto terminator = currentBlock->getTerminator();
             builder_->SetInsertPoint(terminator);
         }
-        scope_.PopScope(this, builder_.get());
+        scope_.PopScope(this, builder_.get(), current_block);
         if (last.first == nullptr) {
             return {};
         }
@@ -507,44 +507,54 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
     }
     if (auto return_statement = is<ReturnNode>(get)) {
         if (return_statement->value == nullptr) {
-            builder_->CreateBr(exit);
+            builder_->CreateBr(exit->basic_block);
             return {};
         }
         auto result = GenerateRValue(return_statement->value.get(), expected);
         //result.first
         builder_->CreateStore(result.first, ret, false);
-        builder_->CreateBr(exit);
+        builder_->CreateBr(exit->basic_block);
         return {};
     }
     if (auto if_statement = is<IfNode>(get)) {
         auto condition = GenerateRValue(if_statement->condition.get(), &BOOLEAN);
-        auto then_block = BasicBlock::Create(*context_, "if.then", func);
-        auto else_block = BasicBlock::Create(*context_, "if.else", func);
-        auto merge_block = BasicBlock::Create(*context_, "if.merge", func);
+        auto then_block =  std::make_shared<Block>(*context_, func, "if.then");
+        auto else_block =  std::make_shared<Block>(*context_, func, "if.else");
+        auto merge_block = std::make_shared<Block>(*context_, func, "if.merge");
 
-        builder_->CreateCondBr(condition.first, then_block, else_block);
+        builder_->CreateCondBr(condition.first, then_block->basic_block, else_block->basic_block);
+        current_block->Connect(then_block);
+        current_block->Connect(else_block);
 
-        builder_->SetInsertPoint(then_block);
+        builder_->SetInsertPoint(then_block->basic_block);
+        current_block = then_block.get();
         GenerateRValue(if_statement->then.get(), expected);
-        if (!then_block->getTerminator())
-            builder_->CreateBr(merge_block);
+        if (!then_block->basic_block->getTerminator()) {
+            builder_->CreateBr(merge_block->basic_block);
+            then_block->Connect(merge_block);
+        }
 
-        builder_->SetInsertPoint(else_block);
+        builder_->SetInsertPoint(else_block->basic_block);
+        current_block = else_block.get();
         if (if_statement->otherwise != nullptr) {
             GenerateRValue(if_statement->otherwise.get(), expected);
         }
 
-        if (!else_block->getTerminator())
-            builder_->CreateBr(merge_block);
+        if (!else_block->basic_block->getTerminator()) {
+            else_block->Connect(merge_block);
+            builder_->CreateBr(merge_block->basic_block);
+        }
 
-        if (merge_block->hasNPredecessors(0)) {
-            merge_block->eraseFromParent();
+        if (merge_block->basic_block->hasNPredecessors(0)) {
+            merge_block->basic_block->eraseFromParent();
         } else {
-            builder_->SetInsertPoint(merge_block);
+            builder_->SetInsertPoint(merge_block->basic_block);
+            current_block = merge_block.get();
         }
         return {};
     }
     if (auto while_statement = is<WhileNode>(get)) {
+        //TODO: convert to Blocks
         auto cond_block = BasicBlock::Create(*context_, "while.cond", func);
         auto loop_block = BasicBlock::Create(*context_, "while.loop", func);
         auto merge_block = BasicBlock::Create(*context_, "while.merge", func);
@@ -740,6 +750,17 @@ std::pair<Value*, std::unique_ptr<TypeNode> > LLVMBackend::GenerateRValue(AstNod
     if (const auto identifier = is<IdentifierNode>(get)) {
         auto var = scope_.Lookup(identifier->identifier);
         auto type = scope_.Type(identifier->identifier);
+        if (!current_block->Valid(var)) {
+            throw std::runtime_error("Use of moved value: " + identifier->identifier);
+        }
+        
+        bool reading_owner = type && type->subtype[0] && type->subtype[0]->type == TypeNodeType::OWNER;
+        bool consumer_wants_owner = expected && expected->type == TypeNodeType::OWNER;
+        
+        if (reading_owner && consumer_wants_owner) {
+            current_block->Move(var);
+        }
+        
         auto drill = Drill({var, UniqueCast<TypeNode>(type->Clone())}, expected);
         return drill;
     }
@@ -1308,8 +1329,9 @@ void LLVMBackend::GenerateFunction(FunctionNode* function) {
 
     func = module_->getFunction(function->name);
 
-    auto block = BasicBlock::Create(*context_, "entry", func);
-    builder_->SetInsertPoint(block);
+    auto block = std::make_shared<Block>(*context_, func, "entry");
+    builder_->SetInsertPoint(block->basic_block);
+    current_block = block.get();
 
     if (function->type->type != TypeNodeType::VOID) {
         ret = builder_->CreateAlloca(return_type, nullptr, "return.addr");
@@ -1327,19 +1349,21 @@ void LLVMBackend::GenerateFunction(FunctionNode* function) {
         idx++;
     }
 
-    exit = BasicBlock::Create(*context_, "exit");
+    exit = std::make_shared<Block>(*context_, nullptr, "exit");
 
     GenerateRValue(function->body.get(), function->type.get());
 
-    if (!builder_->GetInsertBlock()->getTerminator())
-        builder_->CreateBr(exit);
+    if (!builder_->GetInsertBlock()->getTerminator()) {
+        current_block->Connect(exit);
+        builder_->CreateBr(exit->basic_block);
+    }
 
-    exit->insertInto(func);
+    exit->basic_block->insertInto(func);
 
-    builder_->SetInsertPoint(exit);
-
+    builder_->SetInsertPoint(exit->basic_block);
+    current_block = exit.get();
     
-    scope_.PopScope(this, builder_.get());
+    scope_.PopScope(this, builder_.get(), current_block);
     
     if (function->type->type != TypeNodeType::VOID) {
         auto load = builder_->CreateLoad(return_type, ret);

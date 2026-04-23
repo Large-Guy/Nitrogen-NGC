@@ -4,11 +4,11 @@
 #include <llvm/IR/Value.h>
 
 
-class Block : std::enable_shared_from_this<Block> {
+class Block : public std::enable_shared_from_this<Block> {
 public:
-    llvm::BasicBlock* block;
+    llvm::BasicBlock* basic_block;
     
-    Block(llvm::LLVMContext* context);
+    Block(llvm::LLVMContext& context, llvm::Function* function = nullptr, const std::string& name = "");
     
     bool Valid(llvm::Value* value) const;
     
